@@ -28,7 +28,7 @@ With multiple sessions running, the light shows the most urgent state: **red > y
 
 ## Install
 
-Run **`Clawd Setup <version>.exe`** (from the `dist/` folder or wherever it was shared to you). It installs per-user (no admin prompt) and starts with Windows by default.
+Download **`Clawd-Setup-<version>.exe`** from the [latest release](https://github.com/alexjyang618-cloud/claude-stoplight/releases/latest) and run it. It installs per-user (no admin prompt) and starts with Windows by default. The installer is not code-signed, so Windows SmartScreen may stop it the first time; choose **More info → Run anyway**.
 
 On first launch it registers its status hooks into your user-level Claude Code settings (`%USERPROFILE%\.claude\settings.json`), after saving a timestamped backup next to it. When an update changes the hooks, the next launch rewrites them the same way, backup included. Claude Code watches that file, so sessions already running normally pick the hooks up by themselves; restart one if it doesn't. Either way, every session that is already running shows up in the widget right away (see below).
 
@@ -58,9 +58,11 @@ Settings lets you change:
 
 ## Auto-update
 
-The installed app checks GitHub Releases for a new version once at launch, downloads in the background, and asks before restarting. After that it only checks when you use **Check for updates…** in the tray menu.
+The installed app checks this repo's [GitHub Releases](https://github.com/alexjyang618-cloud/claude-stoplight/releases) for a new version once at launch, downloads in the background, and asks before restarting. After that it only checks when you use **Check for updates…** in the tray menu.
 
-For updates to work you must publish releases: set `build.publish.owner` in `package.json` to your GitHub username, create a `claude-stoplight` repo, and upload the contents of a `npm run dist` build (the setup exe, the `.blockmap`, and `latest.yml`) as a GitHub release tagged `v<version>`.
+Each release is tagged `v<version>` and carries the three files of one `npm run dist` build: the setup exe, its `.blockmap`, and `latest.yml`. The updater reads `latest.yml` to find the installer, so the three always travel together under the names the build gave them. `npm run release` publishes them with the [GitHub CLI](https://cli.github.com) once the version's commit is pushed.
+
+A fork that wants its own update channel sets `build.publish.owner` in `package.json` to its GitHub username before building.
 
 ## Uninstall
 
@@ -73,7 +75,12 @@ For updates to work you must publish releases: set `build.publish.owner` in `pac
 ```
 npm install
 npm start        # run in dev
-npm run dist     # build dist/Clawd Setup <version>.exe
+npm run dist     # build dist/Clawd-Setup-<version>.exe
+npm run release  # publish that build as GitHub release v<version>
 ```
 
 If port `47615` clashes with something on your machine, pick a different port in Settings.
+
+## License
+
+[MIT](LICENSE). The Helvetica Neue font files in `renderer/fonts` are not covered by it; they belong to their own rights holder.

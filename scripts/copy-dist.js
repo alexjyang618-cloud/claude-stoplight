@@ -12,8 +12,12 @@ const { version } = require('../package.json');
 const src = path.join(os.homedir(), '.claude-stoplight', 'build');
 const dest = path.join(__dirname, '..', 'dist');
 
-const isInstaller = (name) => /Setup .*\.exe(\.blockmap)?$/.test(name);
-const isCurrent = (name) => name === 'latest.yml' || name.includes(`Setup ${version}.exe`);
+// The installer is named with dashes because GitHub replaces a space in a
+// release file's name, and latest.yml has to name the file as GitHub serves
+// it. Installers from older builds, named with spaces, still count as stale.
+const installer = `Clawd-Setup-${version}.exe`;
+const isInstaller = (name) => /^Clawd[ -]Setup[ -].*\.exe(\.blockmap)?$/.test(name);
+const isCurrent = (name) => [installer, `${installer}.blockmap`, 'latest.yml'].includes(name);
 
 fs.mkdirSync(dest, { recursive: true });
 for (const name of fs.readdirSync(src)) {
