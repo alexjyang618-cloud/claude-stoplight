@@ -1,0 +1,310 @@
+@font-face {
+  font-family: 'Helvetica Neue';
+  font-weight: 400;
+  font-style: normal;
+  src: url('fonts/HelveticaNeueRoman.otf') format('opentype');
+}
+@font-face {
+  font-family: 'Helvetica Neue';
+  font-weight: 500;
+  font-style: normal;
+  src: url('fonts/HelveticaNeueMedium.otf') format('opentype');
+}
+@font-face {
+  font-family: 'Helvetica Neue';
+  font-weight: 600 800;
+  font-style: normal;
+  src: url('fonts/HelveticaNeueBold.otf') format('opentype');
+}
+
+/* Two layers. The form is content: solid grouped surfaces on the window's
+   background. The actions are the functional layer: a capsule of glass that
+   floats over the form at the bottom of the window. Everything follows the
+   system appearance; the accent is Clawd's own orange, kept to the one
+   primary action and the controls' selected state. */
+:root {
+  color-scheme: light dark;
+  --bg: #f2f2f7;
+  --group: #ffffff;
+  --label: rgba(0, 0, 0, 0.88);
+  --label-2: rgba(60, 60, 67, 0.72);
+  --label-3: rgba(60, 60, 67, 0.56);
+  --sep: rgba(60, 60, 67, 0.14);
+  --field: rgba(118, 118, 128, 0.1);
+  --field-edge: rgba(60, 60, 67, 0.22);
+  --accent: #c8623f;
+  --accent-hover: #b95835;
+  --focus: rgba(200, 98, 63, 0.45);
+  --glass: rgba(255, 255, 255, 0.66);
+  --rim-hi: rgba(255, 255, 255, 1);
+  --rim-lo: rgba(255, 255, 255, 0.5);
+  --edge: rgba(0, 0, 0, 0.1);
+  --lift: 0 8px 24px rgba(0, 0, 0, 0.14);
+  --hover: rgba(0, 0, 0, 0.06);
+  --press: rgba(0, 0, 0, 0.11);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1b1c1f;
+    --group: #26282c;
+    --label: #f5f5f7;
+    --label-2: rgba(235, 235, 245, 0.66);
+    --label-3: rgba(235, 235, 245, 0.47);
+    --sep: rgba(255, 255, 255, 0.08);
+    --field: rgba(118, 118, 128, 0.22);
+    --field-edge: rgba(255, 255, 255, 0.14);
+    --accent: #d97757;
+    --accent-hover: #e08663;
+    --focus: rgba(217, 119, 87, 0.55);
+    --glass: rgba(64, 65, 70, 0.6);
+    --rim-hi: rgba(255, 255, 255, 0.4);
+    --rim-lo: rgba(255, 255, 255, 0.08);
+    --edge: rgba(0, 0, 0, 0.4);
+    --lift: 0 8px 24px rgba(0, 0, 0, 0.4);
+    --hover: rgba(255, 255, 255, 0.1);
+    --press: rgba(255, 255, 255, 0.17);
+  }
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'Helvetica Neue', -apple-system, BlinkMacSystemFont, 'SF Pro Text', Helvetica, Arial,
+    sans-serif;
+}
+
+body {
+  background: var(--bg);
+  color: var(--label);
+  font-size: 13px;
+  line-height: 1.25;
+  user-select: none;
+}
+
+/* the window's title bar names the page, so the form starts with its first
+   group */
+main {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  padding: 16px 20px;
+}
+
+/* a group's title */
+h2 {
+  margin: 0 12px 6px;
+  color: var(--label-2);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 14px;
+}
+
+section {
+  background: var(--group);
+  border-radius: 12px;
+  box-shadow: 0 0 0 1px var(--sep);
+  padding: 0 12px;
+  margin-bottom: 18px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 8px 0;
+}
+
+.row + .row {
+  border-top: 1px solid var(--sep);
+}
+
+.grow {
+  flex: 1;
+}
+
+/* a label with a line of explanation under it */
+.text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+small {
+  color: var(--label-2);
+  font-size: 11px;
+  line-height: 1.36;
+}
+
+.check {
+  align-items: flex-start;
+}
+
+input[type='checkbox'] {
+  width: 15px;
+  height: 15px;
+  margin-top: 1px;
+  accent-color: var(--accent);
+  flex: none;
+}
+
+input[type='range'] {
+  width: 130px;
+  accent-color: var(--accent);
+}
+
+input[type='number'] {
+  width: 84px;
+  flex: none;
+  background: var(--field);
+  color: var(--label);
+  border: 1px solid var(--field-edge);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* the keyboard's focus ring */
+input:focus-visible,
+button:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 1px;
+}
+input[type='number']:focus-visible {
+  outline-offset: 0;
+  border-color: var(--accent);
+}
+
+/* settings that only mean something while notifications are on */
+.row:has(input:disabled) {
+  opacity: 0.45;
+}
+
+.val {
+  color: var(--label-2);
+  min-width: 46px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+
+/* the last line of the form shares its band with the floating actions: the
+   version on the leading side, the buttons on the trailing side */
+.version {
+  position: relative;
+  z-index: 1; /* over the fade below */
+  height: 40px;
+  margin: auto 12px 0;
+  font-size: 11px;
+  line-height: 40px;
+  color: var(--label-3);
+}
+
+/* --- the actions: a capsule of glass over the form --- */
+
+/* where the form runs under the actions it fades into the window, so the
+   buttons stay distinct from whatever has scrolled beneath them */
+body::after {
+  content: '';
+  position: fixed;
+  inset: auto 0 0;
+  height: 72px;
+  background: linear-gradient(180deg, transparent, var(--bg) 78%);
+  pointer-events: none;
+}
+
+.bar {
+  position: fixed;
+  z-index: 1;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  gap: 4px;
+  padding: 5px;
+  border-radius: 999px;
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  box-shadow: 0 0 0 1px var(--edge), var(--lift);
+}
+
+/* the rim: bright where the light strikes the top-left edge, catching again
+   at the bottom-right */
+.bar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  background: linear-gradient(150deg, var(--rim-hi), var(--rim-lo) 36%, var(--rim-lo) 64%, var(--rim-hi));
+  -webkit-mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  pointer-events: none;
+}
+
+/* capsules, concentric with the bar; only the primary action is tinted */
+button {
+  min-width: 76px;
+  height: 30px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--label);
+  font-size: 13px;
+  font-weight: 500;
+  transition: background-color 0.14s ease, transform 0.14s ease;
+}
+
+button:hover {
+  background: var(--hover);
+}
+
+button:active {
+  background: var(--press);
+  transform: scale(0.96);
+}
+
+button.primary {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+button.primary:hover {
+  background: var(--accent-hover);
+}
+
+button.primary:active {
+  background: var(--accent-hover);
+}
+
+/* Reduce Transparency or Increase Contrast: the glass turns solid */
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .bar {
+    background: var(--group);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    box-shadow: 0 0 0 1px var(--label-3);
+  }
+  small,
+  h2,
+  .val {
+    color: var(--label);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button {
+    transition: none;
+  }
+  button:active {
+    transform: none;
+  }
+}

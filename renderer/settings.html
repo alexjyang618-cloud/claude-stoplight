@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Clawd Settings</title>
+  <link rel="stylesheet" href="settings.css">
+</head>
+<body>
+  <main>
+    <h2 id="g-widget">Widget</h2>
+    <section aria-labelledby="g-widget">
+      <div class="row">
+        <label for="size">Size</label>
+        <span class="grow"></span>
+        <input type="range" id="size" min="50" max="200" step="10">
+        <output id="sizeVal" for="size" class="val">100%</output>
+      </div>
+      <label class="row check">
+        <input type="checkbox" id="dim">
+        <span class="text">
+          <span>Dim when idle</span>
+          <small>Fades the widget while the light is green or no sessions are running.</small>
+        </span>
+      </label>
+      <label class="row check">
+        <input type="checkbox" id="ghost">
+        <span class="text">
+          <span>Click through when idle</span>
+          <small>Clicks pass to the windows beneath. Use the tray icon to reach the widget while the light is green.</small>
+        </span>
+      </label>
+    </section>
+
+    <h2 id="g-notify">Notifications</h2>
+    <section aria-labelledby="g-notify">
+      <label class="row check">
+        <input type="checkbox" id="notify">
+        <span class="text">
+          <span>Notify when a session is waiting</span>
+          <small>Clicking the notification brings that session's terminal to the front. It disappears by itself once the session stops waiting.</small>
+        </span>
+      </label>
+      <div class="row">
+        <label for="notifyAfter">Notify after waiting</label>
+        <span class="grow"></span>
+        <input type="number" id="notifyAfter" min="0" max="3600" aria-describedby="u-seconds">
+        <span id="u-seconds" class="val">seconds</span>
+      </div>
+      <label class="row check">
+        <input type="checkbox" id="notifySound">
+        <span class="text"><span>Play the notification sound</span></span>
+      </label>
+    </section>
+
+    <h2 id="g-sessions">Sessions</h2>
+    <section aria-labelledby="g-sessions">
+      <div class="row">
+        <label for="prune">Forget silent sessions after</label>
+        <span class="grow"></span>
+        <input type="number" id="prune" min="1" max="168" aria-describedby="u-hours">
+        <span id="u-hours" class="val">hours</span>
+      </div>
+      <div class="row">
+        <label for="port" class="text">
+          <span>Listen port</span>
+          <small>Changing the port restarts the listener and reinstalls the Claude Code hooks. Running Claude sessions pick the new hooks up on their next restart.</small>
+        </label>
+        <input type="number" id="port" min="1024" max="65535">
+      </div>
+    </section>
+
+    <p class="version">Clawd v<span id="ver"></span></p>
+  </main>
+
+  <!-- the actions float on glass over the form, which scrolls beneath them
+       when the window is too short to show it all -->
+  <div class="bar" role="group" aria-label="Actions">
+    <button id="cancel" type="button">Cancel</button>
+    <button id="save" type="button" class="primary">Save</button>
+  </div>
+
+  <script src="settings.js"></script>
+</body>
+</html>

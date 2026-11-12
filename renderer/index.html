@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Clawd</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="root">
+
+    <!-- the menu, revealed on hover: an arch of glass. Its crown is the plan
+         usage gauge (one arc of the rim per limit, with its reading tucked
+         underneath), and the sessions hang below it, nearest the widget. -->
+    <div id="panel" role="group" aria-label="Sessions and plan usage">
+      <div id="gauge" class="gauge" hidden>
+        <svg id="arcs" class="arcs" viewBox="0 0 244 122" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div id="readouts"></div>
+      </div>
+      <div id="unote" class="unote" hidden></div>
+      <div id="rows" class="rows"></div>
+    </div>
+
+    <div id="widget" class="state-off">
+
+      <!-- traffic light -->
+      <div class="light">
+        <div id="wait-chip" class="wait-chip" hidden></div>
+        <div id="done-badge" class="done-badge" hidden></div>
+        <div class="lamp red"></div>
+        <div class="lamp yellow"></div>
+        <div class="lamp green"></div>
+      </div>
+
+      <!-- Clawd (pixel style). Every scene draws the same body in the same
+           place, so swapping scenes reads as one character changing pose
+           rather than two characters swapping. -->
+      <div class="clawd">
+
+        <!-- clawd-scenes:start -->
+        <!-- idle: plain Clawd, bobbing (frozen when no sessions).
+             Starts `on` so he is visible from the first paint, before app.js runs. -->
+        <svg id="scene-idle" class="scene on" viewBox="0 0 100 100" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">
+          <rect x="20" y="84" width="8" height="16" fill="#BF5F42"/><rect x="36" y="84" width="8" height="16" fill="#D97757"/><rect x="60" y="84" width="8" height="16" fill="#D97757"/><rect x="76" y="84" width="8" height="16" fill="#D97757"/>
+          <g class="bob"><rect x="4" y="52" width="16" height="16" fill="#BF5F42"/><rect x="84" y="52" width="16" height="16" fill="#D97757"/><rect x="20" y="36" width="64" height="48" fill="#D97757"/><rect x="20" y="36" width="8" height="48" fill="#BF5F42"/><g class="eyes"><rect x="28" y="44" width="8" height="8" fill="#141414"/><rect x="68" y="44" width="8" height="8" fill="#141414"/></g></g>
+        </svg>
+
+        <!-- thinking: working, but no tool running yet. A bulb lights up just
+             out of reach above his head; he hops for it and it bobs away. -->
+        <svg id="scene-think" class="scene" viewBox="0 0 100 100" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">
+          <g class="jump"><rect x="20" y="84" width="8" height="16" fill="#BF5F42"/><rect x="36" y="84" width="8" height="16" fill="#D97757"/><rect x="60" y="84" width="8" height="16" fill="#D97757"/><rect x="76" y="84" width="8" height="16" fill="#D97757"/><rect x="4" y="52" width="16" height="16" fill="#BF5F42"/><rect x="84" y="52" width="16" height="16" fill="#D97757"/><rect x="20" y="36" width="64" height="48" fill="#D97757"/><rect x="20" y="36" width="8" height="48" fill="#BF5F42"/><g class="eyes"><rect x="28" y="44" width="8" height="8" fill="#141414"/><rect x="68" y="44" width="8" height="8" fill="#141414"/></g></g>
+          <g class="bulb"><rect x="46" y="-4" width="12" height="3" fill="#F2C14E"/><rect x="43" y="-1" width="18" height="3" fill="#F2C14E"/><rect x="40" y="2" width="24" height="12" fill="#F2C14E"/><rect x="43" y="14" width="18" height="3" fill="#F2C14E"/><rect x="46" y="17" width="12" height="3" fill="#F2C14E"/><rect class="glint" x="44" y="3" width="4" height="7" fill="#FFE28F"/><rect x="47" y="20" width="10" height="3" fill="#9AA0A6"/><rect x="48" y="23" width="8" height="3" fill="#6F767D"/></g>
+        </svg>
+
+        <!-- working: hard hat with a lamp, hammering (commands and everything else) -->
+        <svg id="scene-work" class="scene" viewBox="0 0 100 100" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">
+          <rect x="20" y="84" width="8" height="16" fill="#BF5F42"/><rect x="36" y="84" width="8" height="16" fill="#D97757"/><rect x="60" y="84" width="8" height="16" fill="#D97757"/><rect x="76" y="84" width="8" height="16" fill="#D97757"/>
+          <g class="bob-work"><rect x="4" y="52" width="16" height="16" fill="#BF5F42"/><rect x="20" y="36" width="64" height="48" fill="#D97757"/><rect x="20" y="36" width="8" height="48" fill="#BF5F42"/><g class="eyes"><rect x="28" y="44" width="8" height="8" fill="#141414"/><rect x="68" y="44" width="8" height="8" fill="#141414"/></g><g class="hardhat"><rect x="34" y="16" width="36" height="7" fill="#FFC53D"/><rect x="34" y="16" width="6" height="7" fill="#E8A912"/><rect x="26" y="23" width="52" height="7" fill="#FFC53D"/><rect x="26" y="23" width="6" height="7" fill="#E8A912"/><rect x="18" y="30" width="68" height="7" fill="#E8A912"/><rect x="48" y="17" width="8" height="3" fill="#C98F12"/><rect x="45" y="20" width="14" height="9" fill="#C98F12"/><rect x="48" y="29" width="8" height="2" fill="#C98F12"/><rect x="48" y="21" width="8" height="7" fill="#FFF1B8"/></g><g class="ham-up"><rect x="84" y="36" width="16" height="16" fill="#D97757"/><rect x="90" y="18" width="4" height="18" fill="#6B4A2E"/><rect x="80" y="9" width="24" height="9" fill="#9CA3AD"/><rect x="80" y="14" width="24" height="4" fill="#6F7680"/><rect x="82" y="10" width="4" height="3" fill="#C9CFD6"/></g><g class="ham-down"><rect x="90" y="68" width="4" height="10" fill="#6B4A2E"/><rect x="82" y="78" width="24" height="9" fill="#9CA3AD"/><rect x="82" y="78" width="24" height="4" fill="#6F7680"/><rect x="84" y="83" width="4" height="3" fill="#C9CFD6"/><rect x="84" y="52" width="16" height="16" fill="#D97757"/></g></g>
+        </svg>
+
+        <!-- typing: Edit / Write -->
+        <svg id="scene-type" class="scene" viewBox="0 0 100 100" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">
+          <rect x="20" y="84" width="8" height="16" fill="#BF5F42"/><rect x="36" y="84" width="8" height="16" fill="#D97757"/><rect x="60" y="84" width="8" height="16" fill="#D97757"/><rect x="76" y="84" width="8" height="16" fill="#D97757"/>
+          <g class="bob"><rect x="20" y="36" width="64" height="48" fill="#D97757"/><rect x="20" y="36" width="8" height="48" fill="#BF5F42"/><g class="eyes"><rect x="28" y="44" width="8" height="8" fill="#141414"/><rect x="68" y="44" width="8" height="8" fill="#141414"/></g><g class="laptop"><rect x="20" y="58" width="64" height="22" fill="#3a3e46"/><rect x="23" y="61" width="58" height="16" fill="#1e63b8"/><rect x="27" y="64" width="16" height="2" fill="#d6ecff"/><rect x="27" y="68" width="26" height="2" fill="#9fd3ff"/><rect x="33" y="72" width="12" height="2" fill="#d6ecff"/><rect class="caret" x="47" y="72" width="2" height="2" fill="#ffffff"/><rect x="16" y="80" width="72" height="4" fill="#4a4f59"/><rect x="20" y="81" width="64" height="2" fill="#6b727e"/></g><g class="tap tap-l"><rect x="4" y="52" width="16" height="16" fill="#BF5F42"/></g><g class="tap tap-r"><rect x="84" y="52" width="16" height="16" fill="#D97757"/></g></g>
+        </svg>
+
+        <!-- reading / searching: Read, Grep, Glob, web -->
+        <svg id="scene-read" class="scene" viewBox="0 0 100 100" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">
+          <rect x="20" y="84" width="8" height="16" fill="#BF5F42"/><rect x="36" y="84" width="8" height="16" fill="#D97757"/><rect x="60" y="84" width="8" height="16" fill="#D97757"/><rect x="76" y="84" width="8" height="16" fill="#D97757"/>
+          <g class="bob"><rect x="4" y="52" width="16" height="16" fill="#BF5F42"/><rect x="20" y="36" width="64" height="48" fill="#D97757"/><rect x="20" y="36" width="8" height="48" fill="#BF5F42"/><g class="eyes"><rect x="28" y="44" width="8" height="8" fill="#141414"/><rect x="68" y="44" width="8" height="8" fill="#141414"/></g><g class="glass"><rect x="84" y="52" width="16" height="16" fill="#D97757"/><rect x="90" y="44" width="4" height="8" fill="#98A0AA"/><rect x="88" y="23" width="8" height="2" fill="#d3d8de"/><rect x="85" y="25" width="14" height="2" fill="#d3d8de"/><rect x="82" y="27" width="20" height="12" fill="#d3d8de"/><rect x="85" y="39" width="14" height="2" fill="#d3d8de"/><rect x="88" y="41" width="8" height="2" fill="#d3d8de"/><g opacity="0.55"><rect x="89" y="25" width="6" height="2" fill="#bfe0ff"/><rect x="87" y="27" width="10" height="2" fill="#bfe0ff"/><rect x="84" y="29" width="16" height="8" fill="#bfe0ff"/><rect x="87" y="37" width="10" height="2" fill="#bfe0ff"/><rect x="89" y="39" width="6" height="2" fill="#bfe0ff"/></g><rect class="glint" x="86" y="29" width="3" height="3" fill="#ffffff"/></g></g>
+        </svg>
+
+        <!-- permission: waiting on you, checking his watch (id kept from the stop-sign days) -->
+        <svg id="scene-stop" class="scene" viewBox="0 0 100 100" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">
+          <rect x="20" y="84" width="8" height="16" fill="#BF5F42"/>
+          <g class="foot"><rect x="36" y="84" width="8" height="16" fill="#D97757"/></g>
+          <rect x="60" y="84" width="8" height="16" fill="#D97757"/>
+          <rect x="76" y="84" width="8" height="16" fill="#D97757"/>
+          <g class="bob"><rect x="4" y="52" width="16" height="16" fill="#BF5F42"/><rect x="20" y="36" width="64" height="48" fill="#D97757"/><rect x="20" y="36" width="8" height="48" fill="#BF5F42"/><g class="eyes"><rect x="28" y="44" width="8" height="8" fill="#141414"/><rect x="68" y="44" width="8" height="8" fill="#141414"/></g><g class="watch-down"><rect x="84" y="52" width="16" height="16" fill="#D97757"/><rect x="84" y="58" width="16" height="4" fill="#2F3A48"/><rect x="88" y="56" width="8" height="8" fill="#3F7ACB"/><rect x="89" y="57" width="3" height="3" fill="#9CCBF7"/></g><g class="watch-up"><rect x="84" y="36" width="16" height="16" fill="#D97757"/><rect x="84" y="42" width="16" height="4" fill="#2F3A48"/><rect x="88" y="40" width="8" height="8" fill="#3F7ACB"/><rect x="89" y="41" width="3" height="3" fill="#9CCBF7"/></g></g>
+        </svg>
+
+        <!-- question: Claude is asking you something -->
+        <svg id="scene-question" class="scene" viewBox="0 0 100 100" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">
+          <rect x="20" y="84" width="8" height="16" fill="#BF5F42"/><rect x="36" y="84" width="8" height="16" fill="#D97757"/><rect x="60" y="84" width="8" height="16" fill="#D97757"/><rect x="76" y="84" width="8" height="16" fill="#D97757"/>
+          <g class="bob"><rect x="4" y="52" width="16" height="16" fill="#BF5F42"/><rect x="84" y="52" width="16" height="16" fill="#D97757"/><rect x="20" y="36" width="64" height="48" fill="#D97757"/><rect x="20" y="36" width="8" height="48" fill="#BF5F42"/><g class="eyes"><rect x="28" y="44" width="8" height="8" fill="#141414"/><rect x="68" y="44" width="8" height="8" fill="#141414"/></g></g>
+          <g class="bubble"><rect x="62" y="4" width="24" height="3" fill="#5B8FD0"/><rect x="59" y="7" width="30" height="3" fill="#5B8FD0"/><rect x="57" y="10" width="34" height="9" fill="#5B8FD0"/><rect x="59" y="19" width="30" height="3" fill="#5B8FD0"/><rect x="62" y="22" width="24" height="3" fill="#5B8FD0"/><rect x="64" y="25" width="6" height="3" fill="#5B8FD0"/><rect x="62" y="28" width="4" height="3" fill="#5B8FD0"/><rect x="60" y="10" width="3" height="5" fill="#8DBBEB"/><g class="qmark"><rect x="70" y="8" width="7" height="2" fill="#1F2933"/><rect x="75" y="10" width="2" height="3" fill="#1F2933"/><rect x="73" y="13" width="3" height="2" fill="#1F2933"/><rect x="73" y="17" width="2" height="2" fill="#1F2933"/></g></g>
+        </svg>
+
+        <!-- background work: Claude is ready, but tasks it started are still running -->
+        <svg id="scene-stopwatch" class="scene" viewBox="0 0 100 100" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">
+          <rect x="20" y="84" width="8" height="16" fill="#BF5F42"/><rect x="36" y="84" width="8" height="16" fill="#D97757"/><rect x="60" y="84" width="8" height="16" fill="#D97757"/><rect x="76" y="84" width="8" height="16" fill="#D97757"/>
+          <g class="bob"><rect x="4" y="52" width="16" height="16" fill="#BF5F42"/><rect x="20" y="36" width="64" height="48" fill="#D97757"/><rect x="20" y="36" width="8" height="48" fill="#BF5F42"/><g class="eyes"><rect x="28" y="44" width="8" height="8" fill="#141414"/><rect x="68" y="44" width="8" height="8" fill="#141414"/></g><g class="stopwatch"><rect x="72" y="52" width="8" height="3" fill="#9CA3AD"/><rect x="74" y="55" width="4" height="3" fill="#6F7680"/><rect x="70" y="58" width="12" height="2" fill="#9CA3AD"/><rect x="67" y="60" width="18" height="2" fill="#9CA3AD"/><rect x="65" y="62" width="22" height="2" fill="#9CA3AD"/><rect x="64" y="64" width="24" height="12" fill="#9CA3AD"/><rect x="65" y="76" width="22" height="2" fill="#9CA3AD"/><rect x="67" y="78" width="18" height="2" fill="#9CA3AD"/><rect x="70" y="80" width="12" height="2" fill="#9CA3AD"/><rect x="70" y="60" width="12" height="2" fill="#F4F1EA"/><rect x="67" y="62" width="18" height="2" fill="#F4F1EA"/><rect x="66" y="64" width="20" height="12" fill="#F4F1EA"/><rect x="67" y="76" width="18" height="2" fill="#F4F1EA"/><rect x="70" y="78" width="12" height="2" fill="#F4F1EA"/><rect x="75" y="62" width="2" height="2" fill="#1F2933"/><rect x="83" y="69" width="2" height="2" fill="#1F2933"/><rect x="75" y="76" width="2" height="2" fill="#1F2933"/><rect x="67" y="69" width="2" height="2" fill="#1F2933"/><rect class="sw-hand" x="75" y="63" width="2" height="8" fill="#C9445B"/><rect x="75" y="69" width="2" height="2" fill="#1F2933"/></g><rect x="84" y="52" width="16" height="16" fill="#D97757"/></g>
+        </svg>
+
+        <!-- bedtime: walking off, then back with nightcap, teddy and blanket -->
+        <svg id="scene-bedwalk" class="scene" viewBox="0 0 100 100" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">
+          <g class="legsA"><rect x="20" y="84" width="8" height="16" fill="#BF5F42"/><rect x="60" y="84" width="8" height="16" fill="#D97757"/></g>
+          <g class="legsB"><rect x="36" y="84" width="8" height="16" fill="#D97757"/><rect x="76" y="84" width="8" height="16" fill="#D97757"/></g>
+          <g class="torso"><rect x="4" y="52" width="16" height="16" fill="#BF5F42"/><rect x="84" y="52" width="16" height="16" fill="#D97757"/><rect x="20" y="36" width="64" height="48" fill="#D97757"/><rect x="20" y="36" width="8" height="48" fill="#BF5F42"/><g class="eyes"><rect x="28" y="44" width="8" height="8" fill="#141414"/><rect x="68" y="44" width="8" height="8" fill="#141414"/></g><g class="prop cap"><rect x="24" y="32" width="56" height="5" fill="#F4F1EA"/><rect x="28" y="23" width="46" height="9" fill="#C9445B"/><rect x="28" y="15" width="28" height="8" fill="#C9445B"/><rect x="26" y="9" width="14" height="6" fill="#C9445B"/><rect x="20" y="4" width="10" height="8" fill="#F4F1EA"/></g><g class="prop teddy"><rect x="2" y="64" width="4" height="4" fill="#A0714F"/><rect x="12" y="64" width="4" height="4" fill="#A0714F"/><rect x="3" y="67" width="12" height="9" fill="#A0714F"/><rect x="5" y="70" width="2" height="2" fill="#141414"/><rect x="11" y="70" width="2" height="2" fill="#141414"/><rect x="7" y="73" width="4" height="3" fill="#D9B38C"/><rect x="4" y="76" width="10" height="10" fill="#A0714F"/><rect x="1" y="78" width="3" height="6" fill="#A0714F"/><rect x="14" y="78" width="3" height="6" fill="#A0714F"/><rect x="4" y="86" width="4" height="4" fill="#A0714F"/><rect x="10" y="86" width="4" height="4" fill="#A0714F"/></g><g class="prop blanket"><rect x="84" y="66" width="18" height="16" fill="#6B8FD1"/><rect x="84" y="72" width="18" height="3" fill="#93B3EA"/><rect x="94" y="82" width="6" height="8" fill="#6B8FD1"/><rect x="96" y="90" width="4" height="6" fill="#6B8FD1"/></g></g>
+        </svg>
+
+        <!-- bedtime: asleep, sat down on his folded legs under the blanket -->
+        <svg id="scene-sleep" class="scene" viewBox="0 0 100 100" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">
+          <rect x="20" y="84" width="8" height="16" fill="#BF5F42"/><rect x="36" y="84" width="8" height="16" fill="#D97757"/><rect x="60" y="84" width="8" height="16" fill="#D97757"/><rect x="76" y="84" width="8" height="16" fill="#D97757"/>
+          <g class="settle"><rect x="20" y="52" width="64" height="48" fill="#D97757"/><rect x="20" y="52" width="8" height="48" fill="#BF5F42"/><g class="eyes"><rect x="28" y="65" width="8" height="3" fill="#141414"/><rect x="68" y="65" width="8" height="3" fill="#141414"/></g><g class="prop cap"><rect x="24" y="48" width="56" height="5" fill="#F4F1EA"/><rect x="28" y="39" width="46" height="9" fill="#C9445B"/><rect x="16" y="33" width="40" height="8" fill="#C9445B"/><rect x="8" y="35" width="10" height="10" fill="#C9445B"/><rect x="4" y="43" width="10" height="8" fill="#F4F1EA"/></g></g>
+          <g class="prop teddy"><rect x="45" y="54" width="4" height="4" fill="#A0714F"/><rect x="55" y="54" width="4" height="4" fill="#A0714F"/><rect x="46" y="57" width="12" height="9" fill="#A0714F"/><rect x="48" y="60" width="2" height="2" fill="#141414"/><rect x="54" y="60" width="2" height="2" fill="#141414"/><rect x="50" y="63" width="4" height="3" fill="#D9B38C"/><rect x="47" y="66" width="10" height="10" fill="#A0714F"/><rect x="44" y="68" width="3" height="6" fill="#A0714F"/><rect x="57" y="68" width="3" height="6" fill="#A0714F"/><rect x="47" y="76" width="4" height="4" fill="#A0714F"/><rect x="53" y="76" width="4" height="4" fill="#A0714F"/></g>
+          <g class="prop blanket"><rect x="10" y="76" width="84" height="24" fill="#6B8FD1"/><rect x="10" y="76" width="84" height="3" fill="#93B3EA"/><rect x="10" y="86" width="84" height="2" fill="#93B3EA"/></g>
+          <g class="settle"><rect x="4" y="68" width="16" height="16" fill="#BF5F42"/><rect x="84" y="68" width="16" height="16" fill="#D97757"/></g>
+        </svg>
+
+        <!-- bedtime: the props falling away when he wakes -->
+        <svg id="scene-props" class="props" viewBox="0 0 100 100" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">
+          <g class="drop-blanket"><rect x="10" y="76" width="84" height="24" fill="#6B8FD1"/><rect x="10" y="76" width="84" height="3" fill="#93B3EA"/><rect x="10" y="86" width="84" height="2" fill="#93B3EA"/></g>
+          <g class="drop-teddy"><rect x="45" y="54" width="4" height="4" fill="#A0714F"/><rect x="55" y="54" width="4" height="4" fill="#A0714F"/><rect x="46" y="57" width="12" height="9" fill="#A0714F"/><rect x="48" y="60" width="2" height="2" fill="#141414"/><rect x="54" y="60" width="2" height="2" fill="#141414"/><rect x="50" y="63" width="4" height="3" fill="#D9B38C"/><rect x="47" y="66" width="10" height="10" fill="#A0714F"/><rect x="44" y="68" width="3" height="6" fill="#A0714F"/><rect x="57" y="68" width="3" height="6" fill="#A0714F"/><rect x="47" y="76" width="4" height="4" fill="#A0714F"/><rect x="53" y="76" width="4" height="4" fill="#A0714F"/></g>
+          <g class="drop-cap"><rect x="24" y="48" width="56" height="5" fill="#F4F1EA"/><rect x="28" y="39" width="46" height="9" fill="#C9445B"/><rect x="16" y="33" width="40" height="8" fill="#C9445B"/><rect x="8" y="35" width="10" height="10" fill="#C9445B"/><rect x="4" y="43" width="10" height="8" fill="#F4F1EA"/></g>
+        </svg>
+        <!-- clawd-scenes:end -->
+
+        <!-- dozing: shown while green for a while -->
+        <div class="zzz" aria-hidden="true"><span>z</span><span>z</span><span>z</span></div>
+
+      </div>
+    </div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
