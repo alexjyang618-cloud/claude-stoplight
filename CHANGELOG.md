@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.4.1 (2026-11-24)
 
 **Plan usage now fills in when you work only in the Claude app.** Sessions there send no usage figures (only Claude Code in a terminal runs the status line they come from), and the usage service needs Claude Code's sign-in, which only a terminal session renewed. With neither, the tile stayed on "Usage appears with Claude's next reply" however often Claude replied.
 
