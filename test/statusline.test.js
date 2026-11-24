@@ -36,7 +36,7 @@ test('a status line of the user\'s own is kept behind the wrapper, its other key
   assert.notEqual(plan.original, theirs); // a copy
   assert.deepEqual(plan.statusLine, {
     type: 'command',
-    command: 'powershell -NoProfile -ExecutionPolicy Bypass -File "C:/Users/Alex Yang/.claude-stoplight/statusline.ps1"',
+    command: 'powershell -NoProfile -ExecutionPolicy Bypass -File "C:/Users/Alex Yang/.claude-stoplight/clawd-statusline.ps1"',
     padding: 2,
     refreshInterval: 5,
   });
@@ -53,6 +53,10 @@ test('the wrapper, already in place, is recognised and rebuilt from the saved or
   assert.deepEqual(again.original, theirs);
   // without the original on record there is nothing to rebuild it from
   assert.equal(sl.plan({ statusLine: wrapped }, ctx()).original, null);
+  // it is known by its file name, wherever the widget keeps its files
+  const elsewhere = sl.plan({ statusLine: theirs }, ctx({ dir: 'D:\\scratch\\clawd b\\data' })).statusLine;
+  assert.ok(sl.isWrapper(elsewhere) && sl.isOurs(elsewhere));
+  assert.equal(sl.plan({ statusLine: elsewhere }, ctx({ dir: 'D:\\scratch\\clawd b\\data', saved: theirs })).current, true);
 });
 
 test('an entry that is not a command is left alone', () => {
@@ -102,7 +106,7 @@ test('the wrapper script names the port and its files, and no template is left u
 
 test('the files beside the wrapper: the original command for each shell, encoded for it', () => {
   const files = sl.wrapperFiles({ type: 'command', command: 'node "C:/Übung/status.js"\r\n' }, 47615);
-  assert.deepEqual(files.map((f) => f.name), ['statusline.ps1', 'statusline-original.sh', 'statusline-original.ps1']);
+  assert.deepEqual(files.map((f) => f.name), ['clawd-statusline.ps1', 'statusline-original.sh', 'statusline-original.ps1']);
   const [wrapper, sh, ps1] = files.map(sl.encode);
   const BOM = [0xef, 0xbb, 0xbf];
   assert.deepEqual([...wrapper.subarray(0, 3)], BOM);

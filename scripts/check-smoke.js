@@ -24,14 +24,13 @@ const extra = report.extra || {};
 if (expectStatusLine) {
   const sl = extra.statusLine;
   const command = sl && typeof sl.command === 'string' ? sl.command.replace(/\\/g, '/') : '';
-  const is =
-    !command.includes('claude-stoplight/statusline')
-      ? extra.statusLineState === 'kept'
+  const is = command.includes('/clawd-statusline.ps1')
+    ? 'wrap'
+    : command.includes('/claude-stoplight/statusline')
+      ? 'plain'
+      : extra.statusLineState === 'kept'
         ? 'kept'
-        : 'none'
-      : command.includes('/statusline.ps1')
-        ? 'wrap'
-        : 'plain';
+        : 'none';
   if (is !== expectStatusLine) {
     failures.push(`status line: expected ${expectStatusLine}, found ${is} (${JSON.stringify(sl)}, state ${extra.statusLineState})`);
   }

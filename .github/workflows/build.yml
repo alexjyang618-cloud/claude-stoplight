@@ -82,6 +82,17 @@ jobs:
           Start-Process -FilePath $exe -ArgumentList "--user-data-dir=$(Join-Path $base 'profile')" -Wait
           node scripts/check-smoke.js $env:CLAWD_SMOKE plain
 
+      # For looking at a Windows frame without downloading the artifact: a
+      # commit whose message carries [preview] prints one, base64, in the log.
+      - name: Show one frame of the built app
+        if: contains(github.event.head_commit.message, '[preview]')
+        shell: pwsh
+        run: |
+          $b = [Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $env:RUNNER_TEMP 'clawd-c\out\preview.jpg')))
+          Write-Output 'PREVIEW-BEGIN'
+          for ($i = 0; $i -lt $b.Length; $i += 160) { Write-Output $b.Substring($i, [Math]::Min(160, $b.Length - $i)) }
+          Write-Output 'PREVIEW-END'
+
       - name: Keep the installer and what the runs showed
         if: always()
         uses: actions/upload-artifact@v4
