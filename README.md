@@ -1,36 +1,35 @@
 # Clawd 🚦
 
-A tiny always-on-top desktop widget for Windows that shows what Claude Code is doing, so you can tab away without losing time:
+A lamp in the corner of your Windows desktop that shows what Claude Code is doing, so you can tab away without losing time:
 
-| Light | Meaning | Clawd |
+| Lamp | Meaning | Clawd (inside the lamp, when it is open) |
 |---|---|---|
-| *(unlit)* | No Claude Code sessions running | Completely still |
+| *(hollow ring)* | No Claude Code sessions running | Completely still |
 | 🟢 Green | Claude is idle — ready for your next prompt | Bobbing gently, or eyeing a stopwatch while background tasks Claude started are still running |
-| 🟡 Yellow | Claude is working on a prompt | A lightbulb while he thinks, then hard hat on, hammering |
-| 🔴 Red | Claude is waiting on you (permission prompt / question) | Checking his watch, or a speech bubble over his head |
+| 🟡 Yellow, an arc circling it | Claude is working on a prompt | A lightbulb while he thinks, then hard hat on, hammering |
+| 🔴 Red, the wait time beside it | Claude is waiting on you (permission prompt / question) | Checking his watch, or a speech bubble over his head |
 
-With multiple sessions running, the light shows the most urgent state: **red > yellow > green**.
+With multiple sessions running, the lamp shows the most urgent state: **red > yellow > green**.
 
-- **Compact by default** — when the mouse is away, the stoplight collapses to just the one lit lamp beside Clawd; hover to expand the full three-lamp light.
-- **Wait timer** — when the light is red, a chip above it shows how long the oldest session has been waiting (while the session list is open, the list shows each wait instead); after 5 minutes the red pulse gets noticeably more insistent.
+- **Small at rest** — all you see is the lamp, 36 px across. The rest of its window is transparent, and clicks on it pass straight through to whatever is beneath.
+- **Hover to open** — rest the pointer on the lamp and a quarter-disc tray opens out of it, away from the screen corner: three usage gauges sweeping up the rim into their legend, the sessions on a card inside them, a status pill, and the lamp itself with Clawd in it. It folds back when the pointer leaves.
+- **Any corner** — drag the widget by the lamp (or, when it is open, by any tile) to wherever you like. The tray always opens towards the middle of the screen, so in the top-left corner it opens down and to the right.
+- **Wait timer** — when the lamp is red, a pill beside it shows how long the oldest session has been waiting, counting the first minute in seconds. After 5 minutes the pill turns red and a ring keeps spreading from the lamp.
 - **Notifications** — once a session has waited on you for 30 seconds (adjustable), Windows shows a notification naming the session and what it wants. Click it to bring that session's terminal to the front; it disappears by itself once the session stops waiting. Handy when the widget is on another screen or under a fullscreen window.
-- **Finished while you were away** — when a turn ends, a blue badge appears on the light (with a count if several sessions have finished) and that session's row reads *finished* in blue. It stays until you've had the list open for a moment, clicked the row, or sent that session a new prompt.
-- **Hover for details** — hovering the widget also opens the menu, an arch of glass that rises over it. Its lower half is the per-session list: each session's name, its state and how long it's been in it, and underneath, what it's doing or waiting on (*Bash: npm publish*, *Edit: main.js*, the question Claude asked you, or the background tasks still running). A session is named after its project folder, or after the name you gave it with `/rename`; two sessions in the same folder show Claude Code's own names for them (e.g. *alex-obsidian-e7* and *alex-obsidian-ec*). Clicking a row tries to bring that session's terminal to the front (best effort — it matches the project folder name against window titles, which works well for VS Code and for the active Windows Terminal tab), and Clawd runs over to knock on that window before trotting back.
-- **Plan usage** — the menu's crown is a half-circle whose rim is the usage gauge, the same numbers as Claude Code's `/usage`: the rim is split into three arcs, for the 5-hour window, the weekly all-models window, and the weekly window for the top model (named by the API, e.g. *Fable*). Each arc fills clockwise like a dial, with its percentage and the time until it resets set underneath. Green under 50%, yellow to 80%, red above. It is read with the Claude Code sign-in token from `%USERPROFILE%\.claude\.credentials.json` (which Claude Code keeps fresh), refreshed every few minutes and again when you hover. When a refresh fails (the endpoint is rate limiting, the token has expired, the network is down) the last figures stay up and the widget waits before asking again: a minute at first, longer each time the server refuses, and at least as long as the server asks. A note says so once the figures are more than ten minutes old. With no figures to show, the menu is a plain rounded list of sessions.
-- **Glass** — the light's housing, the wait chip and the menu are drawn as Liquid Glass: a translucent body with a bright rim and round, concentric shapes. They follow the Windows app mode, smoky in dark mode and frosted in light mode, and turn solid when Windows' transparency effects are off. A transparent window cannot blur the desktop behind it, so the glass is kept dense enough to read over anything.
+- **Finished while you were away** — when a turn ends, a blue badge appears on the lamp (with a count if several sessions have finished) and that session's row reads *finished*, with a blue dot. It stays until you've had the tray open for a moment, clicked the row, or sent that session a new prompt.
+- **Sessions** — each row has how long the session has been in its state, its name, and underneath, the state in a word and what it is doing or waiting on (*working · Edit: main.js*, *needs you · Bash: npm publish*, the question Claude asked you, or the background tasks still running). The most urgent session sits nearest the lamp. A session is named after its project folder, or after the name you gave it with `/rename`; two sessions in the same folder show Claude Code's own names for them (e.g. *alex-obsidian-e7* and *alex-obsidian-ec*). The card has room for three; any others are counted in a *+2 more* line, with their names in its tooltip. Clicking a row tries to bring that session's terminal to the front (best effort — it matches the project folder name against window titles, which works well for VS Code and for the active Windows Terminal tab).
+- **Plan usage** — the same numbers as Claude Code's `/usage`, as three gauges: the 5-hour window, the weekly all-models window, and the weekly window for the top model (named by the API, e.g. *Fable*). Each has its percentage and the time until it resets beside it; a gauge turns yellow from 75% and red from 90%. See [Where the usage figures come from](#where-the-usage-figures-come-from).
 - **Clawd reacts** — his pose follows what Claude is doing: a lightbulb coming on just out of reach before the first tool call, typing on a laptop for edits, holding up a magnifying glass for reads and searches, a hard hat and a hammer for commands, a blue speech bubble with a question mark when Claude asks you something, and lifting his wristwatch to check it while a permission prompt waits on you. When Claude is idle but background tasks it started (a dev server, a subagent) are still running, he holds up a stopwatch and watches its hand tick round. He hops when a long turn finishes, flinches when a permission is denied, and taps his foot, checking his watch twice as often, once a wait turns urgent.
-- **Bedtime** — after three minutes of green with no background tasks running, he walks off the edge of the widget, comes back half a second later in a nightcap with a teddy bear in one hand and a blanket in the other, sits down on his folded legs with his eyes shut and his nightcap flopped over, hugs the teddy to his chest, throws the blanket over his lap, rests his arms on it and starts snoring z's. The moment anything changes (you send a prompt, Claude needs you, the session ends) he springs up into the matching pose and the cap, teddy and blanket tumble off the bottom of the screen.
-- **A bit of depth** — Clawd is lit from the right: his left edge, left arm, nearest leg and the edge of his hard hat sit in a darker shade.
-- **Always the same Clawd** — every pose is the same drawing, generated by `scripts/clawd-scenes.js`: the same body, arms, eyes and size, never stretched or tilted. A pose only changes what he wears or holds, and where he holds his arms; asleep, he sits down on his folded legs. He moves the way a pixel-art sprite does, in held steps with nothing in between, so his edges stay crisp.
-- **Pet him** — press and hold (without dragging) and he wiggles happily.
-- **Grab Clawd** — drag him right off the widget by his arm and swing him around the screen (he keeps his hard hat and hammer, or his watch). Let go and he falls to the bottom of the desktop, then walks back home and hops into place. You can catch him again mid-air or mid-walk.
+- **Bedtime** — after three minutes of green with no background tasks running, he sits down on his folded legs in a nightcap, hugs a teddy, pulls a blanket over his lap and starts snoring z's. The moment anything changes he is up again.
+- **Always the same Clawd** — every pose is the same drawing, generated by `scripts/clawd-scenes.js`: the same body, arms, eyes and size, never stretched or tilted. A pose only changes what he wears or holds, and where he holds his arms. He is drawn so that each of his pixels is a whole number of screen pixels, and he moves the way a pixel-art sprite does, in held steps with nothing in between, so his edges stay crisp.
+- **Pet him** — with the tray open, press and hold the lamp and he wiggles happily.
 - **Out of your way** — the widget lives only in the system tray (look in the hidden-icons overflow ^ menu); it never appears in the taskbar or Alt-Tab.
 
 ## Install
 
 Download **`Clawd-Setup-<version>.exe`** from the [latest release](https://github.com/alexjyang618-cloud/claude-stoplight/releases/latest) and run it. It installs per-user (no admin prompt) and starts with Windows by default. The installer is not code-signed, so Windows SmartScreen may stop it the first time; choose **More info → Run anyway**.
 
-On first launch it registers its status hooks into your user-level Claude Code settings (`%USERPROFILE%\.claude\settings.json`), after saving a timestamped backup next to it. When an update changes the hooks, the next launch rewrites them the same way, backup included. Claude Code watches that file, so sessions already running normally pick the hooks up by themselves; restart one if it doesn't. Either way, every session that is already running shows up in the widget right away (see below).
+On first launch it registers its status hooks and its status line command in your user-level Claude Code settings (`%USERPROFILE%\.claude\settings.json`, or under `CLAUDE_CONFIG_DIR` if you have set that), after saving a timestamped backup next to it. When an update changes them, the next launch rewrites them the same way, backup included. Claude Code watches that file, so sessions already running normally pick the changes up by themselves; restart one if it doesn't. Either way, every session that is already running shows up in the widget right away (see below).
 
 ## How it works (and why it can't interfere with Claude)
 
@@ -41,32 +40,44 @@ Claude Code hooks fire on session events (prompt submitted, tool use, permission
 - the hooks that fire on every tool call run in the background (`async`), so Claude never waits on them; the rest fire a few times per turn at most and take well under 100 ms, capped at 1 s, with a 5 s hook timeout as a second safety net,
 - if the widget isn't running, the call fails instantly and silently — Claude is unaffected.
 
-The widget just listens, tracks each session's state (what it's doing and which tool call it's on, since when, and in which project folder), and renders the light. It only takes events from local programs like curl: a request that carries a browser's `Origin` header, or is addressed to any host but `127.0.0.1` or `localhost`, is refused, so a web page can't feed it fake sessions. It also reads Claude Code's own list of running processes (`%USERPROFILE%\.claude\sessions\`, one small file per process) so that sessions already running or sitting idle when the widget starts appear immediately, each session is tied to its process and its name from the first moment, and a session disappears within about 20 s of its process exiting even if it never sent SessionEnd. It stores its own data in `%USERPROFILE%\.claude-stoplight\`.
+The widget just listens, tracks each session's state (what it's doing and which tool call it's on, since when, and in which project folder), and draws the lamp. It only takes events from local programs like curl: a request that carries a browser's `Origin` header, or is addressed to any host but `127.0.0.1` or `localhost`, is refused, so a web page can't feed it fake sessions. It also reads Claude Code's own list of running processes (`%USERPROFILE%\.claude\sessions\`, one small file per process) so that sessions already running or sitting idle when the widget starts appear immediately, each session is tied to its process and its name from the first moment, and a session disappears within about 20 s of its process exiting even if it never sent SessionEnd. It stores its own data in `%USERPROFILE%\.claude-stoplight\`.
+
+## Where the usage figures come from
+
+**Claude Code's status line**, for the 5-hour and weekly figures. After every reply, Claude Code runs one status line command and hands it the session's data, including the usage the API has just reported to it. The widget registers a command that passes that data on, the same way the hooks do: one `curl.exe` call to `127.0.0.1` that prints nothing, so your status line stays blank. This needs no sign-in token and makes no request to Anthropic, and the figures are current whenever Claude Code is in use.
+
+- If you already have a status line of your own, it is kept. Claude Code is pointed at a small PowerShell script in `%USERPROFILE%\.claude-stoplight\` instead, which forwards the data to the widget without waiting for it and then runs your command with the same input, through the same shell Claude Code would have used, passing its output and exit code straight through. It costs your status line the time PowerShell takes to start. Before `settings.json` is changed the widget tries the wrapper on stand-in data; if your status line does not run cleanly through it, yours is left exactly as it was.
+- Turning off **Settings → Plan usage → Read usage from Claude Code's status line**, or removing the hooks from the tray menu, takes the command out again and puts back the entry it wrapped, exactly.
+
+**The usage service** (`api.anthropic.com/api/oauth/usage`, read with the Claude Code sign-in token from `.credentials.json`), for the top model's weekly figure, which the status line does not carry, and for the other two before any session has replied. That service is undocumented and refuses anything that asks it often, so the widget asks rarely: when a turn ends or the tray is opened and its own figure is more than a quarter of an hour old, never more than once in five minutes, and never with a token that has expired (Claude Code renews its token only when it next runs, so an expired one just means Claude Code has been idle). After a refusal it waits as long as the service asks, or ten minutes, doubling each time up to an hour.
+
+When a figure cannot be refreshed, nothing is reported as an error. The figure stays up; once it is a quarter of an hour old it is drawn dim with its age (*40m ago*) in place of its reset time, and when its reset time passes it returns to zero. What went wrong is noted in `%USERPROFILE%\.claude-stoplight\liveness.log`. The last figures are remembered across restarts.
 
 ## Tray menu & settings
 
-Right-click the tray icon (or the widget itself): open **Settings**, reset sessions if a light gets stuck (a session whose Claude Code process has exited is dropped automatically, even if it never sent SessionEnd), toggle *Start with Windows*, install/remove the Claude Code hooks, check for updates, or quit. Drag the widget anywhere; its position is remembered. Leave it against a screen edge and it stays docked to that edge: if you later hide, resize or move the taskbar, or change displays, it follows the edge instead of floating where the taskbar used to be.
+Right-click the tray icon (or the widget itself): open **Settings**, reset sessions if the lamp gets stuck (a session whose Claude Code process has exited is dropped automatically, even if it never sent SessionEnd), toggle *Start with Windows*, install/remove the Claude Code hooks (the status line command goes with them), check for updates, or quit. Drag the widget anywhere; where the lamp is, is remembered. Leave it against a screen edge and it stays docked to that edge: if you later hide, resize or move the taskbar, or change displays, it follows the edge instead of floating where the taskbar used to be.
 
 Settings lets you change:
 
-- **Size** (50–200%).
-- **Dim when idle** — fades the widget when the light is green or unlit.
-- **Click through when idle** — when green/unlit, clicks pass straight through the widget to whatever is beneath it (hovering still previews the session list; use the tray icon to interact until Claude is working/waiting again).
+- **Size** (70–150%).
+- **Dim when idle** — fades the lamp when it is green or unlit.
+- **Click through when idle** — when green/unlit, clicks pass straight through the widget to whatever is beneath it (hovering still opens the tray; use the tray icon to interact until Claude is working/waiting again).
 - **Notifications** — on or off, how long a session waits on you before one appears (default 30 s), and whether it plays the Windows notification sound (off by default).
+- **Plan usage** — whether to read usage from Claude Code's status line (on by default; see above).
 - **Forget silent sessions after** — fallback for a silent session whose process could not be identified: how long it lingers before it's forgotten (default 6 h). Normally a session disappears within about 20 s of its Claude Code process exiting.
-- **Listen port** — changing it restarts the listener and re-installs the hooks automatically.
+- **Listen port** — changing it restarts the listener and re-installs the hooks and the status line command automatically.
 
 ## Auto-update
 
 The installed app checks this repo's [GitHub Releases](https://github.com/alexjyang618-cloud/claude-stoplight/releases) for a new version once at launch, downloads in the background, and asks before restarting. After that it only checks when you use **Check for updates…** in the tray menu.
 
-Each release is tagged `v<version>` and carries the three files of one `npm run dist` build: the setup exe, its `.blockmap`, and `latest.yml`. The updater reads `latest.yml` to find the installer, so the three always travel together under the names the build gave them. `npm run release` publishes them with the [GitHub CLI](https://cli.github.com) once the version's commit is pushed.
+Each release is tagged `v<version>` and carries the three files of one `npm run dist` build: the setup exe, its `.blockmap`, and `latest.yml`. The updater reads `latest.yml` to find the installer, so the three always travel together under the names the build gave them.
 
 A fork that wants its own update channel sets `build.publish.owner` in `package.json` to its GitHub username before building.
 
 ## Uninstall
 
-1. Right-click the tray icon → **Remove Claude Code hooks**.
+1. Right-click the tray icon → **Remove Claude Code hooks** (this also removes the status line command, and restores yours if you had one).
 2. Uninstall *Clawd* from Windows Settings → Apps.
 3. Optionally delete `%USERPROFILE%\.claude-stoplight\`.
 
@@ -75,12 +86,19 @@ A fork that wants its own update channel sets `build.publish.owner` in `package.
 ```
 npm install
 npm start        # run in dev
+npm test         # unit tests
 npm run dist     # build dist/Clawd-Setup-<version>.exe
 npm run release  # publish that build as GitHub release v<version>
 ```
+
+`npm run release` publishes with the [GitHub CLI](https://cli.github.com) once the version's commit is pushed; the release notes are that version's section of `CHANGELOG.md`.
+
+Every push is also built and tested on a Windows machine by GitHub Actions (`.github/workflows/build.yml`): the unit tests, the status line wrapper run for real through Git Bash and PowerShell, and a scripted run of the widget itself, from source and from the built app. A commit whose message contains `[release]` is then published as the release for its version, if everything before it passed.
+
+The scripted run is also there to use by hand: start the app with `CLAWD_SMOKE` set to a folder and it plays a short session at itself, saves a picture of each step there with `report.json`, and exits. Point `CLAWD_DATA_DIR` and `CLAUDE_CONFIG_DIR` at scratch folders first, so it touches neither your widget's data nor your Claude Code settings.
 
 If port `47615` clashes with something on your machine, pick a different port in Settings.
 
 ## License
 
-[MIT](LICENSE). The Helvetica Neue font files in `renderer/fonts` are not covered by it; they belong to their own rights holder.
+[MIT](LICENSE). The Inter font files in `renderer/fonts` are under the SIL Open Font License (`renderer/fonts/OFL.txt`).

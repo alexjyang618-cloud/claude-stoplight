@@ -1631,8 +1631,8 @@ function refreshUsage(reason) {
 // (lib/statusline.js). With no status line of the user's own, ours is a bare
 // curl call. With one, theirs is kept behind a wrapper, and the wrapper is
 // tried here, on a stand-in for Claude Code's data, before settings.json is
-// pointed at it: if it does not run cleanly and reach us, their status line is
-// left exactly as it was.
+// pointed at it: if it does not run cleanly, print something and reach us,
+// their status line is left exactly as it was.
 const wrapperTrials = new Map(); // nonce -> called when the wrapper's forward arrives
 let statusLineBusy = false;
 let statusLineSettled = Promise.resolve(); // the install in flight, for a scripted run to wait on
@@ -1664,6 +1664,7 @@ function tryWrapper() {
   return new Promise((resolve) => {
     const nonce = crypto.randomBytes(8).toString('hex');
     let heard = false;
+    let printed = 0;
     let done = false;
     let timer = null;
     let child = null;
@@ -1694,12 +1695,19 @@ function tryWrapper() {
       } catch {}
       finish(false, 'it did not finish in 20 s');
     }, 20000);
-    child.stdout.on('data', () => {});
+    child.stdout.on('data', (chunk) => {
+      printed += chunk.length;
+    });
     child.stdin.on('error', () => {});
     child.on('error', (err) => finish(false, err.message));
     child.on('close', (code) => {
       if (code !== 0) {
         finish(false, `exit code ${code}`);
+        return;
+      }
+      // a status line that shows nothing through the wrapper is not one to risk
+      if (!printed) {
+        finish(false, 'the status line printed nothing through it');
         return;
       }
       // the wrapper does not wait for its forward: give that a moment to land

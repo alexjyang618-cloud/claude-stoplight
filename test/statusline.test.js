@@ -95,6 +95,9 @@ test('the wrapper script names the port and its files, and no template is left u
   assert.match(text, /-replace '\\\\', '\/'/);
   // Windows PowerShell 5.1 has to run it
   assert.ok(!/\?\?|\?\./.test(text));
+  // in PowerShell the comma binds tighter than +, so 'a' + $b, $c is 'a' + ($b, $c):
+  // every pair this script returns has its first half in brackets
+  for (const pair of text.match(/return @\(.*\)/g)) assert.match(pair, /^return @\(\(.+\), \$(true|false)\)$|^return @\('[^'+]+', \$(true|false)\)$/);
 });
 
 test('the files beside the wrapper: the original command for each shell, encoded for it', () => {

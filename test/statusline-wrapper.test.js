@@ -120,7 +120,7 @@ process.stdin.on('end', () => {
 
       const viaWrapper = await run(...shell.via(wrapped), input, dir);
       assert.equal(viaWrapper.code, 0, viaWrapper.err);
-      assert.equal(viaWrapper.out, plain.out, 'the wrapper must not change what the status line prints');
+      assert.equal(viaWrapper.out, plain.out, `the wrapper must not change what the status line prints (stderr: ${viaWrapper.err})`);
 
       assert.equal(await arrived(1), 1, 'the widget heard from it once');
       assert.equal(got[0].method, 'POST');
@@ -130,6 +130,7 @@ process.stdin.on('end', () => {
       // it noticed which shell it was run from, and will use it again
       const remembered = fs.readFileSync(path.join(dir, sl.FILES.shell), 'utf8').replace(/^\uFEFF/, '').trim();
       assert.ok(remembered.startsWith(shell.tag), remembered);
+      assert.ok(fs.existsSync(remembered.slice(shell.tag.length)), `not a file: ${remembered}`);
       const second = await run(...shell.via(wrapped), input, dir);
       assert.equal(second.out, plain.out);
 
@@ -147,8 +148,10 @@ process.stdin.on('end', () => {
     const input = payload();
     const direct = await run('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(dir, sl.FILES.wrapper)], input, os.homedir());
     assert.equal(direct.code, 0, direct.err);
-    assert.match(direct.out, /^\[Fable\] Zoë’s café ☕ · /);
+    assert.match(direct.out, /^\[Fable\] Zoë’s café ☕ · /, direct.err);
     assert.equal(await arrived(1), 1);
+    // nothing but a parent shell is worth remembering, and here there was none
+    assert.ok(!fs.existsSync(path.join(dir, sl.FILES.shell)));
     assert.ok(got[0].body.equals(input));
   });
 
@@ -158,7 +161,7 @@ process.stdin.on('end', () => {
     const started = Date.now();
     const res = await run(file, args, payload(), dir);
     assert.equal(res.code, 0, res.err);
-    assert.match(res.out, /^\[Fable\] Zoë’s café ☕ · /);
+    assert.match(res.out, /^\[Fable\] Zoë’s café ☕ · /, res.err);
     assert.ok(Date.now() - started < 15000);
   });
 });
