@@ -1942,7 +1942,7 @@ function buildMenu() {
     { type: 'separator' },
     { label: 'Settings…', click: openSettings },
     {
-      label: 'Reset sessions (clear the light)',
+      label: 'Reset sessions (clear the lamp)',
       click: () => {
         sessions.clear();
         persistSessions();

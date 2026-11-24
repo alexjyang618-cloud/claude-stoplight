@@ -101,9 +101,10 @@ process.stdin.on('end', () => {
   };
 
   const bash = findGitBash();
+  // (powershell -Command turns any failure of its last command into exit code 1)
   const shells = [
-    { name: 'PowerShell', tag: 'powershell|', via: (cmd) => ['powershell.exe', ['-NoProfile', '-Command', cmd]] },
-    bash && { name: 'Git Bash', tag: 'bash|', via: (cmd) => [bash, ['-c', cmd]] },
+    { name: 'PowerShell', tag: 'powershell|', fails: 1, via: (cmd) => ['powershell.exe', ['-NoProfile', '-Command', cmd]] },
+    bash && { name: 'Git Bash', tag: 'bash|', fails: 3, via: (cmd) => [bash, ['-c', cmd]] },
   ].filter(Boolean);
   if (!bash) t.diagnostic('Git Bash not found: tested through PowerShell only');
 
@@ -134,9 +135,11 @@ process.stdin.on('end', () => {
       const second = await run(...shell.via(wrapped), input, dir);
       assert.equal(second.out, plain.out);
 
-      // their exit code is theirs to give
+      // a status line that fails still reads as failed, exactly as it does unwrapped
+      const failingPlain = await run(...shell.via(original.command), payload({ exit: 3 }), dir);
+      assert.equal(failingPlain.code, shell.fails);
       const failing = await run(...shell.via(wrapped), payload({ exit: 3 }), dir);
-      assert.equal(failing.code, 3);
+      assert.equal(failing.code, shell.fails, failing.err);
     });
   }
 

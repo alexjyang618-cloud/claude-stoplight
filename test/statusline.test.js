@@ -109,7 +109,10 @@ test('the files beside the wrapper: the original command for each shell, encoded
   assert.deepEqual([...ps1.subarray(0, 3)], BOM);
   assert.notDeepEqual([...sh.subarray(0, 3)], BOM); // Git Bash chokes on one
   assert.equal(sh.toString('utf8'), 'node "C:/Übung/status.js"\n');
-  assert.equal(ps1.subarray(3).toString('utf8'), 'node "C:/Übung/status.js"\r\n');
+  assert.equal(
+    ps1.subarray(3).toString('utf8'),
+    'node "C:/Übung/status.js"\r\nif (-not $?) { if ($LASTEXITCODE) { exit $LASTEXITCODE } else { exit 1 } }\r\n'
+  );
   assert.ok(!wrapper.subarray(3).toString('utf8').replace(/\r\n/g, '').includes('\n')); // CRLF throughout
 });
 
