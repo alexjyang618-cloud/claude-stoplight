@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **The empty usage tile no longer promises figures "with Claude's next reply".** A reply in the Claude app brings none: only Claude Code in a terminal runs the status line the figures come from, and only it renews the sign-in token the usage service needs. The tile now reads *Usage appears when Claude replies in a terminal*, and the README says why.
+
 ## 1.4.0 (2026-11-24)
 
 A new design. The widget is now a single 36 px lamp in a corner of your screen. Hover it and a quarter-disc tray opens out of the corner, with four tiles: plan usage, your sessions, a status pill, and the lamp with Clawd inside.

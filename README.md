@@ -44,7 +44,9 @@ The widget just listens, tracks each session's state (what it's doing and which 
 
 ## Where the usage figures come from
 
-**Claude Code's status line**, for the 5-hour and weekly figures. After every reply, Claude Code runs one status line command and hands it the session's data, including the usage the API has just reported to it. The widget registers a command that passes that data on, the same way the hooks do: one `curl.exe` call to `127.0.0.1` that prints nothing, so your status line stays blank. This needs no sign-in token and makes no request to Anthropic, and the figures are current whenever Claude Code is in use.
+**Claude Code's status line**, for the 5-hour and weekly figures. After every reply, Claude Code in a terminal runs one status line command and hands it the session's data, including the usage the API has just reported to it. The widget registers a command that passes that data on, the same way the hooks do: one `curl.exe` call to `127.0.0.1` that prints nothing, so your status line stays blank. This needs no sign-in token and makes no request to Anthropic, and the figures are current whenever Claude Code is in use in a terminal.
+
+- Only a terminal session has a status line. A session in the Claude desktop app (its Code tab, or a cloud session) runs the hooks, so the lamp follows it, but it never runs the status line command, so its replies bring no usage figures.
 
 - If you already have a status line of your own, it is kept. Claude Code is pointed at a small PowerShell script in `%USERPROFILE%\.claude-stoplight\` instead, which forwards the data to the widget without waiting for it and then runs your command with the same input, through the same shell Claude Code would have used, passing its output and exit code straight through. It costs your status line the time PowerShell takes to start. Before `settings.json` is changed the widget tries the wrapper on stand-in data; if your status line does not run cleanly through it, yours is left exactly as it was.
 - Turning off **Settings → Plan usage → Read usage from Claude Code's status line**, or removing the hooks from the tray menu, takes the command out again and puts back the entry it wrapped, exactly.
@@ -52,6 +54,8 @@ The widget just listens, tracks each session's state (what it's doing and which 
 **The usage service** (`api.anthropic.com/api/oauth/usage`, read with the Claude Code sign-in token from `.credentials.json`), for the top model's weekly figure, which the status line does not carry, and for the other two before any session has replied. That service is undocumented and refuses anything that asks it often, so the widget asks rarely: when a turn ends or the tray is opened and its own figure is more than a quarter of an hour old, never more than once in five minutes, and never with a token that has expired (Claude Code renews its token only when it next runs, so an expired one just means Claude Code has been idle). After a refusal it waits as long as the service asks, or ten minutes, doubling each time up to an hour.
 
 When a figure cannot be refreshed, nothing is reported as an error. The figure stays up; once it is a quarter of an hour old it is drawn dim with its age (*40m ago*) in place of its reset time, and when its reset time passes it returns to zero. What went wrong is noted in `%USERPROFILE%\.claude-stoplight\liveness.log`. The last figures are remembered across restarts.
+
+If you work only in the Claude app, neither source has anything to give: the app's sessions run no status line, and the sign-in token is renewed only by a terminal session (it lasts about eight hours). With no figure at all, the usage tile reads *Usage appears when Claude replies in a terminal*. One reply in a terminal session brings the figures and renews the token.
 
 ## Tray menu & settings
 

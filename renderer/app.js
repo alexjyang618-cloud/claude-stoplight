@@ -11,8 +11,8 @@ const TAP_WIGGLE_MS = 900; // a quick tap earns this much wiggle
 // long (a dev server, a task stopped by hand) no longer keeps Clawd up.
 const BG_STALE_MS = 60 * 60 * 1000;
 // A usage figure this old is drawn dim, with its age in place of its reset
-// time. While Claude Code is replying the figures arrive with every reply, so
-// only one that could not be refreshed gets this far.
+// time. While Claude Code is replying in a terminal the figures arrive with
+// every reply, so only one that could not be refreshed gets this far.
 const USAGE_STALE_MS = 15 * 60 * 1000;
 // The tray opens once the pointer has rested on the lamp this long, so it
 // stays shut when the pointer merely crosses it, and folds a moment after the
