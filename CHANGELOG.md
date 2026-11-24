@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.1
+
+**Fixed**
+
+- **A session that Claude Code lists without a status is shown as ready, not working.** Besides listening for hook events, the widget finds sessions in Claude Code's own list of running processes, and it took every entry that did not say "idle" for a working session. Some entries say nothing at all: a Code-tab session of the Claude desktop app, for one, which then sat yellow until its next event. Now only an entry that says it is busy starts out yellow, and a session found this way follows the list's status from then on, until its first hook event arrives.
+- **Processes that come and go no longer flash up as sessions.** Claude Code sometimes starts a helper process that exits within a couple of seconds, and each one was drawn as a working session for that long. An entry with no status is now left alone until it is three seconds old. A real session still appears at once.
+
 ## 1.4.0 (2026-11-24)
 
 A new design. The widget is now a single 36 px lamp in a corner of your screen. Hover it and a quarter-disc tray opens out of the corner, with four tiles: plan usage, your sessions, a status pill, and the lamp with Clawd inside.

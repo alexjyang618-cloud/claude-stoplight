@@ -8,6 +8,7 @@ const os = require('os');
 const G = require('./renderer/geometry.js'); // the opened widget's shape, shared with the page
 const usageLib = require('./lib/usage');
 const statusline = require('./lib/statusline');
+const registry = require('./lib/registry');
 
 // Software rendering: drops the GPU process / shared textures, a big chunk of
 // the app's memory footprint. Plenty for a tiny widget with CSS animations.
@@ -138,7 +139,9 @@ let config = Object.assign({}, DEFAULTS);
 //                 name/nameSource (the registry's session name, and whether it was
 //                   derived from the folder or chosen with /rename),
 //                 pid/pname/pstart (Claude Code process, once known),
-//                 noPid (true: never trust the registry's pid for this id again) }
+//                 noPid (true: never trust the registry's pid for this id again),
+//                 registryOnly (true: found through the registry, and no hook
+//                   event has been heard from it yet; see lib/registry.js) }
 const sessions = new Map();
 // session_id -> when syncSessions dropped it (guards against a wrong pid flapping)
 const reaped = new Map();
@@ -335,6 +338,8 @@ function setSession(id, state, payload, patch) {
     if (now - reaped.get(id) < REAP_GUARD_MS) noPid = true;
     reaped.delete(id);
   }
+  // (a new record, so one found through the registry stops being registryOnly
+  // with its first hook event)
   sessions.set(
     id,
     Object.assign(
@@ -784,10 +789,12 @@ function pidsVerifiable() {
 //    boot cannot be alive — its pid survived in state.json across a reboot) or
 //    whose process has moved on to another session id (/clear, /resume);
 //  - add live registry sessions we have never heard from (already running, or
-//    sitting idle, when the widget started), with the registry's idle/busy state;
+//    sitting idle, when the widget started), with the registry's idle/busy
+//    state, or as ready when the registry gives none (lib/registry.js);
 //  - attach pids to sessions that still lack one;
 //  - correct drift between working and ready when the registry's status is
-//    newer than our last hook event (a Stop or prompt we missed);
+//    newer than our last hook event (a Stop or prompt we missed), or whenever
+//    it differs for a session no hook event has come from yet;
 //  - follow permission waits: Claude Code marks a session `waiting` while a
 //    dialog (permission prompt, question) is up and flips it back the moment
 //    the dialog is answered, so the light turns from red as soon as a prompt
@@ -869,6 +876,7 @@ function quickWaitSync() {
   }
 }
 
+let settleTimer = null; // a sync for records too new to judge, see reconcileSessions
 function reconcileSessions(names, bootTime) {
   const reg = readSessionRegistry();
   registryCache = { at: Date.now(), reg };
@@ -903,53 +911,52 @@ function reconcileSessions(names, bootTime) {
     if (rec && applyRegistryName(s, rec)) changed = true;
     if (rec && applyRegistryWait(id, s, rec)) {
       changed = true;
-    } else if (rec && rec.status && rec.statusAt && rec.statusAt > s.lastEvent + 1000) {
-      if (rec.status === 'idle' && s.state === 'working') {
-        Object.assign(s, {
-          state: 'ready',
-          since: rec.statusAt,
-          tool: null,
-          waitKind: null,
-          turnStart: null,
-          detail: null,
-          unreadAt: rec.statusAt,
-        });
-        livenessLog(`drift ${String(id).slice(0, 8)} working -> ready (registry idle)`);
-        changed = true;
-      } else if (rec.status !== 'idle' && s.state === 'ready') {
-        Object.assign(s, { state: 'working', since: rec.statusAt, turnStart: rec.statusAt, detail: null });
-        livenessLog(`drift ${String(id).slice(0, 8)} ready -> working (registry ${rec.status})`);
+    } else if (rec) {
+      const fix = registry.drift(s, rec);
+      if (fix) {
+        livenessLog(`drift ${String(id).slice(0, 8)} ${s.state} -> ${fix.state} (registry ${rec.status})`);
+        Object.assign(s, fix);
         changed = true;
       }
     }
   }
+  let settleIn = 0; // until the first of the records held back below is old enough
   for (const rec of reg.byId.values()) {
     if (sessions.has(rec.id) || !alive(rec.pid, null, rec.pstart)) continue;
     if (reaped.has(rec.id) && now - reaped.get(rec.id) < REAP_GUARD_MS) continue;
-    const idle = rec.status === 'idle';
-    const since = rec.statusAt || rec.startedAt || now;
-    sessions.set(rec.id, {
-      state: idle ? 'ready' : 'working',
-      since,
-      lastEvent: now,
-      cwd: rec.cwd,
-      tool: null,
-      waitKind: null,
-      detail: null,
-      bg: null,
-      bgSince: null,
-      unreadAt: null,
-      turnStart: idle ? null : since,
-      name: rec.name,
-      nameSource: rec.nameSource,
-      pid: rec.pid,
-      pname: names.get(rec.pid) || null,
-      pstart: rec.pstart,
-      noPid: false,
-    });
+    const found = registry.discover(rec, now);
+    if (found.wait) {
+      settleIn = settleIn ? Math.min(settleIn, found.wait) : found.wait;
+      continue;
+    }
+    sessions.set(
+      rec.id,
+      Object.assign(
+        {
+          cwd: rec.cwd,
+          tool: null,
+          waitKind: null,
+          detail: null,
+          bg: null,
+          bgSince: null,
+          unreadAt: null,
+          name: rec.name,
+          nameSource: rec.nameSource,
+          pid: rec.pid,
+          pname: names.get(rec.pid) || null,
+          pstart: rec.pstart,
+          noPid: false,
+        },
+        found // state, since, lastEvent, turnStart, registryOnly
+      )
+    );
     livenessLog(`discover ${rec.id.slice(0, 8)} pid=${rec.pid} status=${rec.status || '?'}`);
     changed = true;
   }
+  // A record held back gets no second look from the folder watcher unless its
+  // file changes again, so come back for it instead of leaving it to the timer.
+  clearTimeout(settleTimer);
+  if (settleIn) settleTimer = setTimeout(syncSessions, settleIn);
   if (changed) {
     persistSessions();
     pushState();
