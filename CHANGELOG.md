@@ -6,6 +6,8 @@
 
 - **A session that Claude Code lists without a status is shown as ready, not working.** Besides listening for hook events, the widget finds sessions in Claude Code's own list of running processes, and it took every entry that did not say "idle" for a working session. Some entries say nothing at all: a Code-tab session of the Claude desktop app, for one, which then sat yellow until its next event. Now only an entry that says it is busy starts out yellow, and a session found this way follows the list's status from then on, until its first hook event arrives.
 - **Processes that come and go no longer flash up as sessions.** Claude Code sometimes starts a helper process that exits within a couple of seconds, and each one was drawn as a working session for that long. An entry with no status is now left alone until it is three seconds old. A real session still appears at once.
+- **A session that was already waiting on you when the widget found it is red.** A session sitting at a permission prompt or a question when the widget started showed yellow until its next event. It now shows red straight away, with the time it has really been waiting, and if that is longer than your notification delay the notification comes at once.
+- **A menu opened in an idle session no longer counts as work.** Claude Code lists a session with one of its own menus open (`/config`, say) as waiting. For a session at rest that could turn the lamp yellow, and closing the menu could then mark the session as finished. A menu now changes nothing.
 
 ## 1.4.0 (2026-11-24)
 

@@ -789,8 +789,9 @@ function pidsVerifiable() {
 //    boot cannot be alive — its pid survived in state.json across a reboot) or
 //    whose process has moved on to another session id (/clear, /resume);
 //  - add live registry sessions we have never heard from (already running, or
-//    sitting idle, when the widget started), with the registry's idle/busy
-//    state, or as ready when the registry gives none (lib/registry.js);
+//    sitting idle, when the widget started), in the state the registry gives
+//    (idle, busy, or waiting on the user), or as ready when it gives none
+//    (lib/registry.js);
 //  - attach pids to sessions that still lack one;
 //  - correct drift between working and ready when the registry's status is
 //    newer than our last hook event (a Stop or prompt we missed), or whenever
@@ -832,29 +833,17 @@ function syncSessions() {
 
 // Follow a dialog through the registry (see syncSessions): a session marked
 // `waiting` is blocked on the user; a newer non-waiting status means the
-// dialog has been answered. Returns true when the session changed.
+// dialog has been answered (lib/registry.js decides). Returns true when the
+// session changed.
 function applyRegistryWait(id, s, rec) {
-  if (!rec.status || !rec.statusAt) return false;
-  if (s.state === 'permission') {
-    if (rec.status === 'waiting' || rec.statusAt <= s.since + 500) return false;
-    const idle = rec.status === 'idle';
-    Object.assign(
-      s,
-      idle
-        ? { state: 'ready', since: rec.statusAt, tool: null, waitKind: null, turnStart: null, detail: null }
-        : { state: 'working', since: rec.statusAt, waitKind: null }
-    );
-    livenessLog(`drift ${String(id).slice(0, 8)} permission -> ${s.state} (registry ${rec.status})`);
-    return true;
-  }
-  // a dialog opened after our last hook event (e.g. a question, which has no
-  // hook of its own; permission prompts usually get here via their hook
-  // first). A menu the user opened themselves (e.g. /config) is not Claude
-  // waiting on them.
-  if (rec.status !== 'waiting' || rec.statusAt <= s.lastEvent || rec.waitingFor === 'dialog open') return false;
-  const question = !/permission|sandbox|worker/i.test(rec.waitingFor || '');
-  Object.assign(s, { state: 'permission', since: rec.statusAt, waitKind: question ? 'question' : 'permission' });
-  livenessLog(`drift ${String(id).slice(0, 8)} -> permission (registry waiting: ${rec.waitingFor || '?'})`);
+  const fix = registry.dialog(s, rec);
+  if (!fix) return false;
+  livenessLog(
+    fix.state === 'permission'
+      ? `drift ${String(id).slice(0, 8)} -> permission (registry waiting: ${rec.waitingFor || '?'})`
+      : `drift ${String(id).slice(0, 8)} permission -> ${fix.state} (registry ${rec.status})`
+  );
+  Object.assign(s, fix);
   return true;
 }
 
@@ -935,7 +924,6 @@ function reconcileSessions(names, bootTime) {
         {
           cwd: rec.cwd,
           tool: null,
-          waitKind: null,
           detail: null,
           bg: null,
           bgSince: null,
@@ -947,10 +935,13 @@ function reconcileSessions(names, bootTime) {
           pstart: rec.pstart,
           noPid: false,
         },
-        found // state, since, lastEvent, turnStart, registryOnly
+        found // state, since, lastEvent, waitKind, turnStart, registryOnly
       )
     );
-    livenessLog(`discover ${rec.id.slice(0, 8)} pid=${rec.pid} status=${rec.status || '?'}`);
+    livenessLog(
+      `discover ${rec.id.slice(0, 8)} pid=${rec.pid} status=${rec.status || '?'}` +
+        (rec.status === 'waiting' ? ` (${rec.waitingFor || '?'})` : '')
+    );
     changed = true;
   }
   // A record held back gets no second look from the folder watcher unless its
