@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.4.0
+## 1.4.0 (2026-11-24)
 
 A new design. The widget is now a single 36 px lamp in a corner of your screen. Hover it and a quarter-disc tray opens out of the corner, with four tiles: plan usage, your sessions, a status pill, and the lamp with Clawd inside.
 
