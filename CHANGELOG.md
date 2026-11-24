@@ -2,7 +2,11 @@
 
 ## Unreleased
 
-- **The empty usage tile no longer promises figures "with Claude's next reply".** A reply in the Claude app brings none: only Claude Code in a terminal runs the status line the figures come from, and only it renews the sign-in token the usage service needs. The tile now reads *Usage appears when Claude replies in a terminal*, and the README says why.
+**Plan usage now fills in when you work only in the Claude app.** Sessions there send no usage figures (only Claude Code in a terminal runs the status line they come from), and the usage service needs Claude Code's sign-in, which only a terminal session renewed. With neither, the tile stayed on "Usage appears with Claude's next reply" however often Claude replied.
+
+- **The sign-in is kept renewed.** When it has expired and a figure is wanted, Clawd runs `claude -p /usage` out of sight, so Claude Code renews its own sign-in. Nothing is sent to a model; none of your hooks or MCP servers run for it; it does not appear in the sessions list. At most once in a quarter of an hour, and less often while it does not help. **Settings → Plan usage → Keep Claude Code's sign-in renewed** turns it off.
+- **Claude Code's own saved figures are read.** Claude Code keeps the usage service's last answer in its config file. Clawd takes it when it is newer than what it holds, which is also how the figures arrive after a renewal, without a second request to the service.
+- **The empty tile says what is true.** It reads *Usage appears when Claude replies in a terminal*, which is what brings figures when Claude Code is not installed or was never signed in on this computer.
 
 ## 1.4.0 (2026-11-24)
 

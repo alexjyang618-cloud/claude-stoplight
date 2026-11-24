@@ -26,8 +26,9 @@
         </svg>
         <div id="legend"></div>
         <!-- only a terminal session reports usage (see lib/usage.js): a reply in
-             the Claude app brings none, so the hint must not promise one -->
-        <div id="uhint" hidden title="Plan usage reaches Clawd from Claude Code in a terminal. Sessions in the Claude app don't report it.">Usage appears when Claude replies in a terminal</div>
+             the Claude app brings none, so the hint must not promise one. It
+             shows when Claude Code's sign-in could not be used or renewed either. -->
+        <div id="uhint" hidden title="Sessions in the Claude app don't report plan usage, and Clawd has not been able to ask for it with Claude Code's sign-in. One reply in a terminal session brings the figures.">Usage appears when Claude replies in a terminal</div>
         <div id="rows"></div>
         <div id="more" hidden></div>
         <div id="empty" hidden>Waiting for Claude Code</div>

@@ -55,7 +55,21 @@ The widget just listens, tracks each session's state (what it's doing and which 
 
 When a figure cannot be refreshed, nothing is reported as an error. The figure stays up; once it is a quarter of an hour old it is drawn dim with its age (*40m ago*) in place of its reset time, and when its reset time passes it returns to zero. What went wrong is noted in `%USERPROFILE%\.claude-stoplight\liveness.log`. The last figures are remembered across restarts.
 
-If you work only in the Claude app, neither source has anything to give: the app's sessions run no status line, and the sign-in token is renewed only by a terminal session (it lasts about eight hours). With no figure at all, the usage tile reads *Usage appears when Claude replies in a terminal*. One reply in a terminal session brings the figures and renews the token.
+**Claude Code's own saved answer.** Claude Code keeps the usage service's last answer to it in its config file (`cachedUsageUtilization` in `.claude.json`). The widget reads that when it is newer than what it holds: no token, no request.
+
+**If you work only in the Claude app**, the first two sources dry up: the app's sessions run no status line, and the sign-in token is renewed only when Claude Code itself makes a request from a terminal session (it lasts about eight hours). So when the token has expired and a figure is wanted, the widget has Claude Code renew it, by running what you would type at a terminal:
+
+```
+claude -p /usage --setting-sources local --strict-mcp-config --no-session-persistence
+```
+
+- `/usage` run this way is not a conversation: nothing is sent to a model, and it takes a second or two. Claude Code renews its sign-in to ask the usage service, and saves the answer where the widget reads it.
+- The run is kept to itself: none of your settings are loaded, so none of your hooks fire for it; none of your MCP servers are started; no transcript is saved. It runs in `%USERPROFILE%\.claude-stoplight\usage-renewal\`, and by that folder the widget keeps it out of the sessions list.
+- The widget never handles the sign-in's refresh token or writes Claude Code's credentials. It only looks at what Claude Code leaves behind.
+- It happens at most once in a quarter of an hour, and after a run that left the sign-in expired (signed out, offline, no `claude` on this computer) not again for half an hour, doubling up to six hours. Each run is noted in `liveness.log`.
+- **Settings → Plan usage → Keep Claude Code's sign-in renewed** turns it off.
+
+With no figure at all (Claude Code is not installed, or was never signed in on this computer), the usage tile reads *Usage appears when Claude replies in a terminal*: one reply there brings the figures and a sign-in the widget can keep renewed.
 
 ## Tray menu & settings
 
@@ -67,7 +81,7 @@ Settings lets you change:
 - **Dim when idle** — fades the lamp when it is green or unlit.
 - **Click through when idle** — when green/unlit, clicks pass straight through the widget to whatever is beneath it (hovering still opens the tray; use the tray icon to interact until Claude is working/waiting again).
 - **Notifications** — on or off, how long a session waits on you before one appears (default 30 s), and whether it plays the Windows notification sound (off by default).
-- **Plan usage** — whether to read usage from Claude Code's status line (on by default; see above).
+- **Plan usage** — whether to read usage from Claude Code's status line, and whether to have Claude Code renew its sign-in when it lapses (both on by default; see above).
 - **Forget silent sessions after** — fallback for a silent session whose process could not be identified: how long it lingers before it's forgotten (default 6 h). Normally a session disappears within about 20 s of its Claude Code process exiting.
 - **Listen port** — changing it restarts the listener and re-installs the hooks and the status line command automatically.
 
