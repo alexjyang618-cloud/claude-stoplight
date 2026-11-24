@@ -1,33 +1,47 @@
-const BASE_H = 124; // widget design height in CSS px (matches main.js)
+const G = window.ClawdGeometry; // the opened widget's shape, shared with main.js
+
 const URGENT_MS = 5 * 60 * 1000; // red this long -> escalate the pulse
 const SLEEPY_MS = 3 * 60 * 1000; // green this long -> Clawd dozes off
+const TUCK_MS = 1500; // settling down until the z's start
 const SCENE_HOLD_MS = 1400; // a tool pose stays at least this long, so rapid tool calls don't flicker
-const PET_HOLD_MS = 160; // press this long without dragging -> petting
+const PET_HOLD_MS = 160; // press this long -> petting
 const TAP_WIGGLE_MS = 900; // a quick tap earns this much wiggle
 // Background tasks reported at the end of a turn wake the session when they
 // finish, which ends with a fresh report. One that has said nothing for this
 // long (a dev server, a task stopped by hand) no longer keeps Clawd up.
 const BG_STALE_MS = 60 * 60 * 1000;
-// Usage figures this old, with the last refresh failed, get a note saying so.
-// Main refreshes them every three minutes, so this is several misses in a row.
-const USAGE_GRACE_MS = 10 * 60 * 1000;
+// A usage figure this old is drawn dim, with its age in place of its reset
+// time. While Claude Code is replying the figures arrive with every reply, so
+// only one that could not be refreshed gets this far.
+const USAGE_STALE_MS = 15 * 60 * 1000;
+// The tray opens once the pointer has rested on the lamp this long, so it
+// stays shut when the pointer merely crosses it, and folds a moment after the
+// pointer leaves, so a grazing exit doesn't flicker.
+const OPEN_DELAY_MS = 90;
+const CLOSE_DELAY_MS = 180;
+const MAX_ROWS = 3; // sessions the card has room for
+const ARC_MIN = 2; // a gauge that is not empty still shows a dot where it starts
 
 const root = document.getElementById('root');
-const widget = document.getElementById('widget');
-const panel = document.getElementById('panel');
-const gaugeEl = document.getElementById('gauge');
-const arcsEl = document.getElementById('arcs');
-const readoutsEl = document.getElementById('readouts');
-const unoteEl = document.getElementById('unote');
+const space = document.getElementById('space');
+const tray = document.getElementById('tray');
+const plate = document.getElementById('plate');
+const tilesG = document.getElementById('tiles-g');
+const gaugesEl = document.getElementById('gauges');
+const legendEl = document.getElementById('legend');
+const uhintEl = document.getElementById('uhint');
 const rowsEl = document.getElementById('rows');
-const chip = document.getElementById('wait-chip');
-const badge = document.getElementById('done-badge');
+const moreEl = document.getElementById('more');
+const emptyEl = document.getElementById('empty');
+const pillEl = document.getElementById('pill');
+const pillLabel = document.getElementById('pill-label');
+const pillTime = document.getElementById('pill-time');
+const waitEl = document.getElementById('wait');
+const pulseEl = document.getElementById('pulse');
+const lampEl = document.getElementById('lamp');
+const badge = document.getElementById('badge');
+const zzzEl = document.querySelector('.zzz');
 const clawdEl = document.querySelector('.clawd');
-const lamps = {
-  red: document.querySelector('.lamp.red'),
-  yellow: document.querySelector('.lamp.yellow'),
-  green: document.querySelector('.lamp.green'),
-};
 const scenes = {
   idle: document.getElementById('scene-idle'),
   think: document.getElementById('scene-think'),
@@ -37,10 +51,8 @@ const scenes = {
   stop: document.getElementById('scene-stop'),
   question: document.getElementById('scene-question'),
   stopwatch: document.getElementById('scene-stopwatch'),
-  bedwalk: document.getElementById('scene-bedwalk'),
   sleep: document.getElementById('scene-sleep'),
 };
-const props = document.getElementById('scene-props'); // nightcap, teddy, blanket falling away
 
 const STATE_CLASS = {
   off: 'state-off',
@@ -50,9 +62,12 @@ const STATE_CLASS = {
 };
 
 const STATE_WORD = { ready: 'ready', working: 'working', permission: 'needs you' };
-
-// which lamp survives when the stoplight collapses to a single circle
-const ACTIVE_LAMP = { off: 'green', ready: 'green', working: 'yellow', permission: 'red' };
+const STATE_LABEL = {
+  off: 'No Claude sessions',
+  ready: 'Claude is ready',
+  working: 'Claude is working',
+  permission: 'Claude needs you',
+};
 
 // which pose a tool earns while working; anything else swings the hammer
 const TOOL_SCENES = {
@@ -79,24 +94,48 @@ const SCENE_GROUP = {
   stop: 'permission',
   question: 'permission',
   stopwatch: 'background',
-  bedwalk: 'bed',
   sleep: 'bed',
 };
 
 let data = { state: 'off', sessions: [] };
-let usage = { bars: [], fetchedAt: 0, error: null }; // plan usage bars, from main
-let cfg = { zoom: 0.7, dimIdle: false, clickThroughIdle: false };
+// plan usage, from main: { bars: [{ key, label, percent, resetsAt, asOf }] }
+let usage = { bars: [] };
+let cfg = { scale: 1, dimIdle: false, clickThroughIdle: false, corner: 'br' };
 // Sessions restored from disk can be hours old, which would put Clawd to sleep
 // the instant the widget launches. He wakes up on launch and dozes SLEEPY_MS later.
 const bootedAt = Date.now();
 let expanded = false;
-let lastSentHeight = 0;
 
 function fmtDur(ms) {
   const m = Math.floor(ms / 60000);
   if (m < 1) return '<1m';
   if (m < 60) return `${m}m`;
   return `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
+// the same, counting the first minute in seconds: for the pills, where a wait
+// that has just begun should be seen to be running
+function fmtClock(ms) {
+  return ms < 60000 ? `${Math.max(0, Math.floor(ms / 1000))}s` : fmtDur(ms);
+}
+
+// "3h 20m" / "2d 4h" until a reset instant
+function fmtUntil(t, now) {
+  const ms = t - now;
+  if (!Number.isFinite(ms) || ms <= 0) return 'now';
+  const m = Math.ceil(ms / 60000);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ${m % 60}m`;
+  return `${Math.floor(h / 24)}d ${h % 24}h`;
+}
+
+// "40m" / "3h" / "2d" since a figure was read
+function fmtAge(ms) {
+  const m = Math.floor(ms / 60000);
+  if (m < 60) return `${Math.max(1, m)}m`;
+  const h = Math.floor(m / 60);
+  return h < 48 ? `${h}h` : `${Math.floor(h / 24)}d`;
 }
 
 function sessionName(s) {
@@ -119,16 +158,19 @@ function idleNow() {
   return data.state === 'ready' || data.state === 'off';
 }
 
-function clawdRect() {
-  const r = clawdEl.getBoundingClientRect();
-  return { x: r.x, y: r.y, width: r.width, height: r.height };
-}
-
-// The panel is redrawn every couple of seconds. Its parts are kept and edited
+// The tray is redrawn every couple of seconds. Its parts are kept and edited
 // in place rather than rebuilt, so a row under the cursor keeps its highlight
-// and the gauge can ease from one reading to the next.
+// and a gauge can ease from one reading to the next.
 function setText(el, text) {
   if (el.textContent !== text) el.textContent = text;
+}
+
+function setClass(el, cls) {
+  if (el.getAttribute('class') !== cls) el.setAttribute('class', cls);
+}
+
+function setTitle(el, title) {
+  if (el.title !== title) el.title = title;
 }
 
 function span(cls) {
@@ -137,99 +179,42 @@ function span(cls) {
   return el;
 }
 
-const rowParts = new Map(); // session id -> its row and the pieces inside it
+// ------------------------------------------------------------------- corners
 
-function makeRow(id) {
-  const row = document.createElement('div');
-  row.className = 'row';
-  row.setAttribute('role', 'button');
-  row.tabIndex = 0;
-  const parts = { row, dot: span('dot'), name: span('name'), meta: span('meta'), sub: span('sub') };
-  row.append(parts.dot, parts.name, parts.meta, parts.sub);
-  row.addEventListener('click', () => window.stoplight.focusSession(id, clawdRect()));
-  row.addEventListener('keydown', (e) => {
-    if (e.key !== 'Enter' && e.key !== ' ') return;
-    e.preventDefault();
-    row.click();
-  });
-  return parts;
+// geometry.js describes a lamp in the bottom-right corner of the screen. For
+// a lamp on the left the layout is mirrored across (fx), and for one at the
+// top it is mirrored down (fy), so the tray always opens away from the
+// corner. Shapes are simply flipped; text is placed at the mirrored spot and
+// hung from whichever edge is now nearest the screen's.
+let fx = false;
+let fy = false;
+
+function mx(x, w) {
+  return fx ? G.SIZE - x - w : x;
 }
 
-function updateRow({ row, dot, name, meta, sub }, s) {
-  const finished = Boolean(s.state === 'ready' && s.unread);
-  const bg = activeBg(s);
-  row.classList.toggle('finished', finished);
-  const dotClass = `dot ${s.state}`;
-  if (dot.className !== dotClass) dot.className = dotClass;
-  setText(name, sessionName(s));
-  const word = finished ? 'finished' : bg ? 'background' : STATE_WORD[s.state] || s.state;
-  setText(meta, `${word} · ${fmtDur(Date.now() - s.since)}`);
-  // second line: the tool call or question it is on, or its background tasks
-  const doing = s.state === 'ready' ? null : s.detail;
-  const subText = doing || (bg && (bg.length > 1 ? `${bg[0]} (+${bg.length - 1} more)` : bg[0])) || '';
-  setText(sub, subText);
-  sub.hidden = !subText;
-  const title = [s.cwd, doing, ...(bg || []), 'Click to focus its terminal'].filter(Boolean).join('\n');
-  if (row.title !== title) row.title = title;
+function my(y, h) {
+  return fy ? G.SIZE - y - h : y;
 }
 
-function syncRows() {
-  const live = new Set();
-  data.sessions.forEach((s, i) => {
-    let parts = rowParts.get(s.id);
-    if (!parts) rowParts.set(s.id, (parts = makeRow(s.id)));
-    updateRow(parts, s);
-    if (rowsEl.children[i] !== parts.row) rowsEl.insertBefore(parts.row, rowsEl.children[i] || null);
-    live.add(s.id);
-  });
-  for (const [id, parts] of rowParts) {
-    if (live.has(id)) continue;
-    parts.row.remove();
-    rowParts.delete(id);
-  }
+function box(el, x, y, w, h) {
+  el.style.left = `${mx(x, w)}px`;
+  el.style.top = `${my(y, h)}px`;
+  el.style.width = `${w}px`;
+  el.style.height = `${h}px`;
 }
 
-// "3h 20m" / "2d 4h" until a reset instant
-function fmtUntil(t) {
-  const ms = t - Date.now();
-  if (!Number.isFinite(ms) || ms <= 0) return 'now';
-  const m = Math.ceil(ms / 60000);
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ${m % 60}m`;
-  return `${Math.floor(h / 24)}d ${h % 24}h`;
+// a block as wide as its text, hung from its lamp-side edge at x
+function hang(el, edge, y, h) {
+  el.style.left = fx ? `${G.SIZE - edge}px` : 'auto';
+  el.style.right = fx ? 'auto' : `${G.SIZE - edge}px`;
+  el.style.top = `${my(y, h)}px`;
 }
 
-// ------------------------------------------------------------- usage gauge
-
-// The panel's crown is a half-disc, and its rim is the gauge: the limits share
-// the arc end to end, each filling clockwise like a dial, with its reading set
-// on the radius underneath. Geometry is in the panel's CSS px (244 wide, so
-// the crown's centre sits at 122,122); angles run counter-clockwise from
-// three o'clock.
+const OPPOSITE = { br: 'tl', bl: 'tr', tr: 'bl', tl: 'br' };
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const DOME_R = 122;
-const ARC_R = 112; // the track's centre line: 6px wide, 7px in from the rim
-const ARC_FROM = 176; // the ends stop short of the baseline, clear of the rows
-const ARC_TO = 4;
-const ARC_GAP = 7; // between neighbouring arcs, before their round caps
-const ARC_MIN = 2; // an empty arc still shows a dot where it starts
-// how far out from the centre the readings sit: the middle one of three hangs
-// a little lower, so the three never crowd
-const READ_R = 66;
-const READ_R_TOP = 61;
-const READ_W = 62; // a reading's width, while its neighbours leave room
-
-function onDome(r, deg) {
-  const a = (deg * Math.PI) / 180;
-  return { x: DOME_R + r * Math.cos(a), y: DOME_R - r * Math.sin(a) };
-}
-
-function arcPath(from, to) {
-  const a = onDome(ARC_R, from);
-  const b = onDome(ARC_R, to);
-  return `M${a.x.toFixed(2)} ${a.y.toFixed(2)}A${ARC_R} ${ARC_R} 0 0 1 ${b.x.toFixed(2)} ${b.y.toFixed(2)}`;
-}
+const SLOTS = ['session', 'weekly', 'model']; // outer gauge first
+let gaugeParts = [];
 
 function svgPath(cls, d) {
   const p = document.createElementNS(SVG_NS, 'path');
@@ -238,145 +223,250 @@ function svgPath(cls, d) {
   return p;
 }
 
-let gaugeKeys = null; // the limits the gauge is currently drawn for
-let gaugeParts = [];
-
-function buildGauge(bars) {
-  const n = bars.length;
-  const sweep = (ARC_FROM - ARC_TO - ARC_GAP * (n - 1)) / n;
-  // Three limits is what the API reports today. Were there more, each reading
-  // narrows to the chord between itself and its neighbour and sets smaller,
-  // so they still cannot run into each other.
-  const chord = 2 * READ_R * Math.sin(((sweep + ARC_GAP) * Math.PI) / 360);
-  const width = n > 3 ? Math.min(READ_W, chord - 4) : READ_W;
-  readoutsEl.classList.toggle('dense', n > 3);
-  arcsEl.replaceChildren();
-  readoutsEl.replaceChildren();
-  gaugeParts = bars.map((_, i) => {
-    const from = ARC_FROM - i * (sweep + ARC_GAP);
-    const d = arcPath(from, from - sweep);
-    const fill = svgPath('gfill', d);
+// the tiles and gauges are drawn once; layout() only turns them to the corner
+function buildTray() {
+  document.getElementById('tile-usage').setAttribute('d', G.usagePath);
+  document.getElementById('tile-card').setAttribute('d', G.cardPath);
+  gaugeParts = G.gauges.map((g) => {
+    const fill = svgPath('gfill', g.d);
     fill.setAttribute('pathLength', '100');
-    arcsEl.append(svgPath('gtrack', d), fill);
-    const mid = from - sweep / 2;
-    const at = onDome(n === 3 && i === 1 ? READ_R_TOP : READ_R, mid);
-    const read = document.createElement('div');
-    read.className = 'readout';
-    read.setAttribute('role', 'meter');
-    read.setAttribute('aria-valuemin', '0');
-    read.setAttribute('aria-valuemax', '100');
-    read.style.left = `${at.x.toFixed(1)}px`;
-    read.style.top = `${at.y.toFixed(1)}px`;
-    read.style.width = `${width.toFixed(1)}px`;
-    const parts = { fill, read, label: span('rlabel'), pct: span('rpct'), reset: span('rreset') };
-    read.append(parts.label, parts.pct, parts.reset);
-    readoutsEl.append(read);
+    const track = svgPath('gtrack', g.d);
+    gaugesEl.append(track, fill);
+    const row = document.createElement('div');
+    row.className = 'lrow';
+    row.setAttribute('role', 'meter');
+    row.setAttribute('aria-valuemin', '0');
+    row.setAttribute('aria-valuemax', '100');
+    const main = span('lmain');
+    const parts = { track, fill, row, label: span('llabel'), val: span('lval'), rest: span('lrest'), rowY: g.rowY };
+    main.append(parts.label, parts.val);
+    row.append(main, parts.rest);
+    legendEl.append(row);
     return parts;
   });
 }
 
-function renderGauge() {
-  const bars = usage.bars;
-  gaugeEl.hidden = bars.length === 0;
-  const keys = bars.map((b) => b.key).join('|');
-  if (keys !== gaugeKeys) {
-    gaugeKeys = keys;
-    buildGauge(bars);
+function layout() {
+  const corner = OPPOSITE[cfg.corner] ? cfg.corner : 'br';
+  fx = corner[1] === 'l';
+  fy = corner[0] === 't';
+  space.classList.toggle('fx', fx);
+  space.classList.toggle('fy', fy);
+  // the tray sits MARGIN in from the window's two edges nearest the screen corner
+  const far = G.WINDOW - G.MARGIN - G.SIZE;
+  space.style.left = `${fx ? G.MARGIN : far}px`;
+  space.style.top = `${fy ? G.MARGIN : far}px`;
+  // a quarter-disc: its one big corner faces away from the lamp, and the
+  // lamp's own corner is concentric with the lamp
+  const r = { tl: 22, tr: 22, br: 22, bl: 22 };
+  r[corner] = G.LAMP_R + G.GAP;
+  r[OPPOSITE[corner]] = G.trayRadius;
+  plate.style.borderRadius = `${r.tl}px ${r.tr}px ${r.br}px ${r.bl}px`;
+  tilesG.setAttribute(
+    'transform',
+    `translate(${fx ? G.SIZE : 0} ${fy ? G.SIZE : 0}) scale(${fx ? -1 : 1} ${fy ? -1 : 1})`
+  );
+  tray.style.transformOrigin = `${mx(G.D, 0)}px ${my(G.D, 0)}px`;
+  for (const p of gaugeParts) {
+    box(p.row, G.legend.left, p.rowY - G.legend.rowH / 2, G.legend.right - G.legend.left, G.legend.rowH);
   }
-  bars.forEach((b, i) => {
-    const { fill, read, label, pct, reset } = gaugeParts[i];
-    const level = b.percent >= 80 ? ' high' : b.percent >= 50 ? ' warn' : '';
-    if (fill.getAttribute('class') !== `gfill${level}`) fill.setAttribute('class', `gfill${level}`);
-    fill.style.strokeDashoffset = String(100 - Math.min(100, Math.max(ARC_MIN, b.percent)));
-    setText(label, b.label);
-    setText(pct, String(b.percent)); // style.css appends the % sign, set smaller
-    setText(reset, b.resetsAt ? fmtUntil(b.resetsAt) : '');
-    reset.hidden = !b.resetsAt;
-    read.setAttribute('aria-label', `${b.label} usage`);
-    read.setAttribute('aria-valuenow', String(b.percent));
-    const title = `${b.label} usage: ${b.percent}%` + (b.resetsAt ? `\nResets ${new Date(b.resetsAt).toLocaleString()}` : '');
-    if (read.title !== title) read.title = title;
-  });
-  // A failed fetch keeps the last numbers up. It is only worth saying so once
-  // they are old enough to mislead: a refresh that fails now and then (the
-  // usage endpoint rate limits) passes unnoticed, and main retries by itself.
-  const stale = Boolean(usage.error) && (!usage.fetchedAt || Date.now() - usage.fetchedAt >= USAGE_GRACE_MS);
-  unoteEl.hidden = !stale;
-  if (stale) {
-    setText(
-      unoteEl,
-      usage.fetchedAt ? `${usage.error} · showing figures from ${fmtDur(Date.now() - usage.fetchedAt)} ago` : usage.error
+  box(uhintEl, G.legend.left, gaugeParts[0].rowY - G.legend.rowH / 2, G.legend.right - G.legend.left, 46);
+  box(pillEl, G.pill.left, G.pill.top, G.pill.width, G.pill.height);
+  box(lampEl, G.D - G.LAMP_R, G.D - G.LAMP_R, 2 * G.LAMP_R, 2 * G.LAMP_R);
+  box(pulseEl, G.D - 24, G.D - 24, 48, 48);
+  hang(waitEl, G.D - G.DOT_R - 4, G.D - G.DOT_R, 2 * G.DOT_R);
+  hang(badge, G.D - G.DOT_R + 12, G.D - G.DOT_R - 6, 18);
+  box(zzzEl, G.D + 2, G.D - G.LAMP_R - 30, 26, 32);
+}
+
+// --------------------------------------------------------------------- usage
+
+function renderUsage(now) {
+  const byKey = new Map((usage.bars || []).map((b) => [b.key, b]));
+  let any = false;
+  SLOTS.forEach((key, i) => {
+    const b = byKey.get(key);
+    const p = gaugeParts[i];
+    p.row.hidden = !b;
+    p.track.style.display = b ? '' : 'none';
+    p.fill.style.display = b ? '' : 'none';
+    if (!b) return;
+    any = true;
+    // a window that has reset since it was read starts again from nothing
+    const rolled = Boolean(b.resetsAt && now >= b.resetsAt);
+    const percent = rolled ? 0 : b.percent;
+    const stale = !rolled && now - (b.asOf || 0) >= USAGE_STALE_MS;
+    const level = percent >= 90 ? ' high' : percent >= 75 ? ' warn' : '';
+    setClass(p.fill, `gfill${level}${stale ? ' stale' : ''}`);
+    p.fill.style.strokeDashoffset = String(100 - Math.min(100, Math.max(percent > 0 ? ARC_MIN : 0, percent)));
+    setClass(p.row, `lrow${stale ? ' stale' : ''}`);
+    setText(p.label, b.label);
+    setText(p.val, `${percent}%`);
+    setText(p.rest, stale ? `${fmtAge(now - b.asOf)} ago` : !rolled && b.resetsAt ? fmtUntil(b.resetsAt, now) : '');
+    p.row.setAttribute('aria-label', `${b.label} usage`);
+    p.row.setAttribute('aria-valuenow', String(percent));
+    setTitle(
+      p.row,
+      [
+        `${b.label} usage: ${percent}%`,
+        !rolled && b.resetsAt ? `Resets ${new Date(b.resetsAt).toLocaleString()}` : '',
+        stale ? `As of ${new Date(b.asOf).toLocaleString()}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n')
     );
-  }
-}
-
-// The session panel sits just above whatever Clawd is wearing or holding.
-// Distances are CSS px down from the top of #widget, from style.css: 124px
-// tall with 14px bottom padding, an 86px Clawd box drawn in 100 units, and a
-// 50px-tall light.
-const FLOOR = BASE_H - 14;
-const CLAWD_TOP = FLOOR - 86;
-const CLAWD_UNIT = 86 / 100;
-const LIGHT_TOP = FLOOR - 50;
-const PANEL_GAP = 10;
-// How high each pose reaches in his drawing (y in its 100-unit box). The poses
-// Claude flips between while working share the tallest, so the panel doesn't
-// hop with every tool call (the thinking bulb tucks under it).
-const POSE_REACH = { idle: 36, stopwatch: 36, think: 9, work: 9, type: 9, read: 9, stop: 36, question: 4, bedwalk: 4, sleep: 33 };
-let panelBottom = -6; // the panel's bottom edge, down from the widget's top
-
-function placePanel() {
-  const reach = POSE_REACH[shownScene] ?? 36;
-  panelBottom = Math.min(CLAWD_TOP + reach * CLAWD_UNIT, LIGHT_TOP) - PANEL_GAP;
-  panel.style.marginBottom = `${-panelBottom}px`;
-}
-
-function renderPanel() {
-  const show = expanded && (data.sessions.length > 0 || usage.bars.length > 0 || Boolean(usage.error));
-  // The panel is kept current while it is shut, so it opens already right and
-  // never holds on to a session that has gone. Shut, its arcs are drawn
-  // empty; they sweep up to their readings as it opens.
-  renderGauge();
-  syncRows();
-  panel.classList.toggle('crowned', usage.bars.length > 0);
-  panel.classList.toggle('has-rows', data.sessions.length > 0);
-  panel.classList.toggle('open', show);
-  panel.inert = !show; // shut, its rows are out of reach of the keyboard too
-  if (!show) {
-    if (lastSentHeight) {
-      lastSentHeight = 0;
-      window.stoplight.collapse(); // shrinks the hover region back to the widget
-    }
-    return;
-  }
-  requestAnimationFrame(() => {
-    if (!expanded) return;
-    // tell main how tall the live (hoverable) region is now
-    const total = Math.round((BASE_H - panelBottom + panel.offsetHeight + 2) * cfg.zoom);
-    if (total !== lastSentHeight) {
-      lastSentHeight = total;
-      window.stoplight.expand(total);
-    }
   });
+  uhintEl.hidden = any;
+}
+
+// ------------------------------------------------------------------ sessions
+
+const rowParts = new Map(); // session id -> its row and the pieces inside it
+
+function makeRow(id) {
+  const row = document.createElement('div');
+  row.setAttribute('role', 'button');
+  row.tabIndex = 0;
+  const parts = {
+    row,
+    text: span('rtext'),
+    l1: span('l1'),
+    dur: span('dur'),
+    name: span('name'),
+    l2: span('l2'),
+    bead: span('bead'),
+  };
+  parts.l1.append(parts.dur, parts.name);
+  parts.text.append(parts.l1, parts.l2);
+  row.append(parts.text, parts.bead);
+  row.addEventListener('click', () => window.stoplight.focusSession(id));
+  row.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    row.click();
+  });
+  return parts;
+}
+
+function updateRow(parts, s, now) {
+  const finished = Boolean(s.state === 'ready' && s.unread);
+  const bg = activeBg(s);
+  setClass(parts.bead, `bead ${finished ? 'finished' : s.state}`);
+  setText(parts.dur, fmtDur(now - s.since));
+  setText(parts.name, sessionName(s));
+  // line two: its state, then the tool call or question it is on, or its
+  // background tasks
+  const word = finished ? 'finished' : bg ? 'background' : STATE_WORD[s.state] || s.state;
+  const doing = s.state === 'ready' ? null : s.detail;
+  const what = doing || (bg && (bg.length > 1 ? `${bg[0]} (+${bg.length - 1} more)` : bg[0])) || '';
+  setText(parts.l2, what ? `${word} · ${what}` : word);
+  setTitle(parts.row, [s.cwd, doing, ...(bg || []), 'Click to focus its terminal'].filter(Boolean).join('\n'));
+}
+
+// The card narrows as it climbs away from the lamp, so each line of each row
+// gets the width the card has at that height. Rows stack from the lamp
+// outwards, most urgent first, the stack centred in the card.
+function renderRows(now) {
+  const list = data.sessions;
+  const shown = list.slice(0, MAX_ROWS);
+  const extra = list.length - shown.length;
+  const hero = list.length === 1;
+  const tight = extra > 0;
+  const l1 = hero ? 19 : tight ? 16 : 17;
+  const l2 = hero ? 16 : tight ? 13 : 14;
+  const gap = tight ? 2 : 4;
+  const rowH = l1 + l2;
+  const moreH = 13;
+  const total = shown.length * rowH + Math.max(0, shown.length - 1) * gap + (extra ? moreH + 3 : 0);
+  let bottom = G.card.bottom - (G.card.height - total) / 2;
+  const textEdge = G.card.textEdge - 8 - 6; // inside the bead and its gap
+
+  const live = new Set();
+  shown.forEach((s, i) => {
+    let parts = rowParts.get(s.id);
+    if (!parts) rowParts.set(s.id, (parts = makeRow(s.id)));
+    updateRow(parts, s, now);
+    setClass(parts.row, `row${hero ? ' hero' : ''}${tight ? ' tight' : ''}`);
+    const top = bottom - rowH;
+    // the row's own padding (2px 6px) lies outside the text
+    hang(parts.row, G.card.textEdge + 6, top - 2, rowH + 4);
+    // line one sits above line two on screen, which is the far side of the
+    // row for a lamp at the bottom and the near side for one at the top
+    const far1 = fy ? top + l2 : top;
+    const far2 = fy ? top : top + l1;
+    parts.l1.style.maxWidth = `${Math.max(24, Math.floor(textEdge - G.cardLimit(far1)))}px`;
+    parts.l2.style.maxWidth = `${Math.max(24, Math.floor(textEdge - G.cardLimit(far2)))}px`;
+    if (rowsEl.children[i] !== parts.row) rowsEl.insertBefore(parts.row, rowsEl.children[i] || null);
+    live.add(s.id);
+    bottom = top - gap;
+  });
+  for (const [id, parts] of rowParts) {
+    if (live.has(id)) continue;
+    parts.row.remove();
+    rowParts.delete(id);
+  }
+
+  moreEl.hidden = extra <= 0;
+  if (extra > 0) {
+    setText(moreEl, `+${extra} more`);
+    setTitle(moreEl, list.slice(MAX_ROWS).map((s) => `${sessionName(s)} · ${STATE_WORD[s.state] || s.state}`).join('\n'));
+    hang(moreEl, G.card.textEdge, bottom - 3 - moreH + gap, moreH);
+  }
+  emptyEl.hidden = list.length > 0;
+  if (!list.length) hang(emptyEl, G.card.textEdge, G.card.bottom - G.card.height / 2 - 9, 17);
+}
+
+// ---------------------------------------------------------------- the pill
+
+// The state in a word and how long it has held: the oldest wait, the longest
+// turn still running, or how long Claude has been ready.
+function status(now) {
+  const list = data.sessions;
+  if (data.state === 'permission') {
+    const waiting = list.filter((s) => s.state === 'permission');
+    const since = Math.min(now, ...waiting.map((s) => s.since));
+    const question = waiting.length > 0 && waiting.every((s) => s.waitKind === 'question');
+    return { label: question ? 'Question' : 'Needs you', ms: now - since };
+  }
+  if (data.state === 'working') {
+    const since = Math.min(now, ...list.filter((s) => s.state === 'working').map((s) => s.since));
+    return { label: 'Working', ms: now - since };
+  }
+  if (data.state === 'ready' && list.length) {
+    const since = Math.max(...list.map((s) => s.since));
+    const finished = list.filter((s) => s.unread).length;
+    if (finished) return { label: finished > 1 ? `${finished} finished` : 'Finished', ms: now - since };
+    if (list.some(activeBg)) return { label: 'Background', ms: now - since };
+    return { label: 'Ready', ms: now - since };
+  }
+  return { label: 'No sessions', ms: null };
 }
 
 // --------------------------------------------------------------- pixel grid
 
-// style.css rounds every one of Clawd's moves to whole device pixels, so each
-// edge of his drawing shifts by the same amount and no part of him grows or
-// shrinks as he steps. These tell it how big a device pixel is: in his
-// 100-unit viewBox (--dp) and in CSS px under #root's zoom (--cp). Both
-// change with the widget size and with the display's scale.
-const BED_WALK_PX = 170; // how far he walks off at bedtime, CSS px
-const EYE_UNITS = 8; // an eye's height in his viewBox
+// Clawd is a 12 x 8 grid of pixels drawn 8 viewBox units to a cell. He is
+// sized so that a cell is a whole number of device pixels (2 at 100% on a 1x
+// display), and placed on a whole device pixel, so every cell comes out the
+// same size. style.css rounds each of his moves to device pixels the same
+// way, using --dp (a device pixel in his viewBox) and --cp (one in CSS px
+// under #root's zoom). All of it changes with the widget size and the
+// display's scale.
+const CLAWD_MID_X = 52; // the middle of his body, in his 100-unit box
+const CLAWD_MID_Y = 66;
 
 function setPixelGrid() {
-  const devPerCss = cfg.zoom * (window.devicePixelRatio || 1);
-  const devPerUnit = CLAWD_UNIT * devPerCss;
-  clawdEl.style.setProperty('--dp', `${1 / devPerUnit}px`);
-  clawdEl.style.setProperty('--cp', `${1 / devPerCss}px`);
-  clawdEl.style.setProperty('--eye-shut', String(1 / (EYE_UNITS * devPerUnit)));
-  clawdEl.style.setProperty('--walk-steps', String(Math.max(1, Math.round(BED_WALK_PX * devPerCss))));
+  const devPerPx = cfg.scale * (window.devicePixelRatio || 1);
+  const cell = Math.max(1, Math.round(2 * devPerPx));
+  const size = (12.5 * cell) / devPerPx; // his 100 units
+  const unit = size / 100;
+  const snap = (v) => Math.round(v * devPerPx) / devPerPx;
+  clawdEl.style.width = `${size}px`;
+  clawdEl.style.height = `${size}px`;
+  clawdEl.style.left = `${snap(G.LAMP_R - CLAWD_MID_X * unit)}px`;
+  clawdEl.style.top = `${snap(G.LAMP_R - CLAWD_MID_Y * unit)}px`;
+  clawdEl.style.setProperty('--dp', `${8 / cell}px`);
+  clawdEl.style.setProperty('--cp', `${1 / devPerPx}px`);
+  clawdEl.style.setProperty('--eye-shut', String(1 / cell));
 }
 
 // dragging the widget to a display with another scale changes the ratio
@@ -390,8 +480,6 @@ function onPixelRatio() {
   setPixelGrid();
   watchPixelRatio();
 }
-setPixelGrid();
-watchPixelRatio();
 
 // ------------------------------------------------------------------- scenes
 
@@ -401,11 +489,11 @@ watchPixelRatio();
 let shownScene = null;
 let sceneShownAt = 0;
 let sceneTimer = null;
+let sleepy = false;
+let sleepySince = 0;
 
 function sceneFor() {
-  // bedtime overrides the state-driven pose until he is startled awake
-  if (bedtime === 'leaving' || bedtime === 'away' || bedtime === 'returning') return 'bedwalk';
-  if (bedtime === 'lying' || bedtime === 'asleep') return 'sleep';
+  if (sleepy) return 'sleep';
   if (data.state === 'working') {
     // follow whatever the most recently active working session is doing
     const s = data.sessions
@@ -423,11 +511,11 @@ function sceneFor() {
 }
 
 function showScene(name) {
+  const woke = shownScene === 'sleep' && name !== 'sleep';
   for (const [key, el] of Object.entries(scenes)) el.classList.toggle('on', key === name);
   shownScene = name;
   sceneShownAt = Date.now();
-  placePanel();
-  if (expanded) renderPanel(); // the hover region follows the panel
+  if (woke) oneShot('hop'); // startled awake
 }
 
 function updateScene() {
@@ -451,41 +539,80 @@ function updateScene() {
   }
 }
 
+// -------------------------------------------------------------------- render
+
+let lastLive = '';
+
+// Tell main which part of the window is the widget right now, so it can tell
+// when the pointer is over it: the opened tray, or the lamp and however far
+// the wait pill reaches beside it.
+function reportLive() {
+  const reach = expanded || waitEl.hidden ? 0 : Math.ceil(G.DOT_R + 4 + waitEl.offsetWidth);
+  const key = `${expanded}:${reach}`;
+  if (key === lastLive) return;
+  lastLive = key;
+  window.stoplight.live({ open: expanded, reach });
+}
+
 function render() {
   const now = Date.now();
-  const waiting = data.sessions.filter((s) => s.state === 'permission');
-  const waitMs = waiting.length ? now - Math.min(...waiting.map((s) => s.since)) : 0;
-  const urgent = data.state === 'permission' && waitMs >= URGENT_MS;
+  const st = status(now);
+  const urgent = data.state === 'permission' && st.ms >= URGENT_MS;
   // background tasks keep him up: they will wake a session when they finish
   const idleMs =
     data.state === 'ready' && data.sessions.length && !data.sessions.some(activeBg)
       ? now - Math.max(bootedAt, ...data.sessions.map((s) => s.since))
       : 0;
-  const sleepy = idleMs >= SLEEPY_MS;
-  if (sleepy && !bedtime) startBedtime();
-  else if (!sleepy && bedtime && bedtime !== 'waking') wake();
-  widget.className = [
-    STATE_CLASS[data.state] || 'state-off',
-    urgent && 'urgent',
-    sleepy && 'sleepy',
-    bedtime === 'asleep' && 'asleep',
-    idleNow() && cfg.dimIdle && 'dim',
-    !expanded && 'collapsed',
-  ]
-    .filter(Boolean)
-    .join(' ');
-  const active = ACTIVE_LAMP[data.state] || 'green';
-  for (const [name, el] of Object.entries(lamps)) {
-    el.classList.toggle('active', name === active);
-  }
+  const nowSleepy = idleMs >= SLEEPY_MS;
+  if (nowSleepy && !sleepy) sleepySince = now;
+  sleepy = nowSleepy;
+  setClass(
+    space,
+    [
+      STATE_CLASS[data.state] || 'state-off',
+      urgent && 'urgent',
+      sleepy && 'sleepy',
+      sleepy && now - sleepySince >= TUCK_MS && 'asleep',
+      idleNow() && cfg.dimIdle && 'dim',
+      expanded && 'open',
+      fx && 'fx',
+      fy && 'fy',
+    ]
+      .filter(Boolean)
+      .join(' ')
+  );
   updateScene();
+
+  // at rest: the wait beside the lamp, and the count of finished turns on it
   const finished = data.sessions.filter((s) => s.state === 'ready' && s.unread).length;
   badge.hidden = finished === 0;
-  badge.textContent = finished > 1 ? String(finished) : '';
-  renderPanel();
-  // the open panel lists every wait, and sits where the chip would be
-  chip.hidden = data.state !== 'permission' || panel.classList.contains('open');
-  if (!chip.hidden) chip.textContent = fmtDur(waitMs);
+  setText(badge, finished > 1 ? String(finished) : '');
+  waitEl.hidden = data.state !== 'permission';
+  if (!waitEl.hidden) setText(waitEl, fmtClock(st.ms));
+  const names = data.sessions.filter((s) => s.state === data.state).map(sessionName);
+  lampEl.setAttribute(
+    'aria-label',
+    `${STATE_LABEL[data.state] || STATE_LABEL.off}${names.length ? `: ${names.join(', ')}` : ''}`
+  );
+
+  // The tray is kept current while it is shut, so it opens already right and
+  // never holds on to a session that has gone. Shut, its gauges are drawn
+  // empty; they sweep up to their readings as it opens.
+  setText(pillLabel, st.label);
+  setText(pillTime, st.ms === null ? '' : fmtClock(st.ms));
+  // the time is set large; when that would crowd the label out, it steps down
+  pillTime.classList.remove('long');
+  if (pillLabel.scrollWidth > pillLabel.clientWidth) pillTime.classList.add('long');
+  renderUsage(now);
+  renderRows(now);
+  reportLive();
+}
+
+function setExpanded(next) {
+  if (next === expanded) return;
+  expanded = next;
+  tray.inert = !expanded; // shut, its rows are out of reach of the keyboard too
+  render();
 }
 
 // ---------------------------------------------------------------- reactions
@@ -493,7 +620,7 @@ function render() {
 // One-shot keyframe animations on the Clawd box; the class comes off when the
 // animation ends so the next one can play.
 const REACTION_CLASS = { done: 'hop', flinch: 'flinch' };
-const ONE_SHOTS = new Set(['hop', 'flinch', 'startle']);
+const ONE_SHOTS = new Set(['hop', 'flinch']);
 
 function oneShot(cls) {
   clawdEl.classList.remove(cls);
@@ -507,82 +634,21 @@ clawdEl.addEventListener('animationend', (e) => {
 
 window.stoplight.onReact(({ type }) => {
   const cls = REACTION_CLASS[type];
-  if (cls && !clawdEl.classList.contains('grabbed')) oneShot(cls);
+  if (cls) oneShot(cls);
 });
 
-// ------------------------------------------------------------------ bedtime
+// ------------------------------------------------------------------ petting
 
-// After SLEEPY_MS of green, Clawd walks off the widget, comes back half a
-// second later with a nightcap, a teddy and a blanket, sits down on his folded
-// legs, hugs the teddy and throws the blanket over his lap. Any change of
-// state startles him awake: he jumps up and the props tumble off the bottom
-// of the screen.
-// phases: null | leaving | away | returning | lying | asleep | waking
-// ('lying' is the settling down, before the z's)
-const BED_WALK_MS = 1700; // matches the .bed-leaving / .bed-returning transitions
-const BED_AWAY_MS = 500;
-const BED_TUCK_MS = 1500; // settling down until the z's start
-const BED_WAKE_MS = 1000; // the jump and the props' fall
-
-let bedtime = null;
-let bedTimers = [];
-
-function bedLater(ms, fn) {
-  bedTimers.push(setTimeout(fn, ms));
-}
-
-function clearBedTimers() {
-  for (const t of bedTimers) clearTimeout(t);
-  bedTimers = [];
-}
-
-function setBedPhase(phase, cls) {
-  bedtime = phase;
-  clawdEl.classList.remove('bed-leaving', 'bed-away', 'bed-returning');
-  if (cls) clawdEl.classList.add(cls);
-  updateScene();
-}
-
-function startBedtime() {
-  clearBedTimers();
-  setBedPhase('leaving', 'bed-leaving');
-  bedLater(BED_WALK_MS, () => {
-    setBedPhase('away', 'bed-away');
-    bedLater(BED_AWAY_MS, () => {
-      setBedPhase('returning', 'bed-returning');
-      bedLater(BED_WALK_MS, () => {
-        setBedPhase('lying', null);
-        bedLater(BED_TUCK_MS, () => {
-          bedtime = 'asleep';
-          render();
-        });
-      });
-    });
-  });
-}
-
-function wake() {
-  const hadProps = bedtime === 'returning' || bedtime === 'lying' || bedtime === 'asleep';
-  clearBedTimers();
-  setBedPhase('waking', null);
-  oneShot('startle');
-  if (hadProps) {
-    props.classList.remove('drop');
-    void props.offsetWidth;
-    props.classList.add('drop');
-  }
-  bedLater(BED_WAKE_MS, () => {
-    bedtime = null;
-    props.classList.remove('drop');
-    render();
-  });
-}
-
-// Petting is a wiggle of alternating tilt classes rather than a keyframe loop,
-// so letting go puts him straight back from whichever side he is on.
+// Press and hold the opened lamp and he wiggles happily; a quick tap earns a
+// short one. The wiggle is a pair of alternating tilt classes rather than a
+// keyframe loop, so letting go puts him straight back from whichever side he
+// is on.
 let wiggleTimer = null;
 let wiggleSide = 1;
 let happyTimer = null;
+let press = null; // the pointer holding the lamp down
+let petTimer = null;
+let petting = false;
 
 function startWiggle() {
   stopWiggle();
@@ -605,56 +671,28 @@ function stopWiggle(lingerMs = 400) {
   happyTimer = setTimeout(() => clawdEl.classList.remove('happy'), lingerMs);
 }
 
-// ------------------------------------------------------------- grabbing Clawd
-
-let grabStart = null; // pointerdown position, before the drag threshold
-let grabbing = false;
-let petTimer = null;
-let petting = false;
-
-clawdEl.addEventListener('pointerdown', (e) => {
-  if (e.button !== 0) return;
-  grabStart = { id: e.pointerId, x: e.clientX, y: e.clientY };
-  window.stoplight.clawdWarm(); // pre-load the overlay window
+lampEl.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0 || !expanded) return;
+  press = e.pointerId;
   try {
-    clawdEl.setPointerCapture(e.pointerId);
+    lampEl.setPointerCapture(e.pointerId);
   } catch {}
   clearTimeout(petTimer);
   petTimer = setTimeout(() => {
     petTimer = null;
-    if (grabStart && !grabbing) {
+    if (press !== null) {
       petting = true;
       startWiggle();
     }
   }, PET_HOLD_MS);
 });
 
-clawdEl.addEventListener('pointermove', (e) => {
-  if (!grabStart || grabbing || e.pointerId !== grabStart.id) return;
-  if (Math.hypot(e.clientX - grabStart.x, e.clientY - grabStart.y) < 4) return;
-  grabbing = true;
-  clearTimeout(petTimer);
-  petTimer = null;
-  if (petting) {
-    petting = false;
-    stopWiggle(0);
-  }
-  // the widget's Clawd stays put until main says the overlay has taken over
-  // ('clawd:away'), so he never blinks out before the overlay can draw him
-  window.stoplight.clawdGrab(clawdRect());
-});
-
-function endGrab(e) {
-  if (!grabStart || e.pointerId !== grabStart.id) return;
-  grabStart = null;
+function endPress(e) {
+  if (press === null || e.pointerId !== press) return;
+  press = null;
   const quickTap = petTimer !== null;
   clearTimeout(petTimer);
   petTimer = null;
-  if (grabbing) {
-    grabbing = false;
-    window.stoplight.clawdRelease();
-    return;
-  }
   if (petting) {
     petting = false;
     stopWiggle();
@@ -664,31 +702,43 @@ function endGrab(e) {
       if (!petting) stopWiggle();
     }, TAP_WIGGLE_MS);
   }
+  if (!hovering) scheduleClose();
 }
-clawdEl.addEventListener('pointerup', endGrab);
-clawdEl.addEventListener('pointercancel', endGrab);
-
-window.stoplight.onClawdAway(() => clawdEl.classList.add('grabbed'));
-window.stoplight.onClawdRestore(() => clawdEl.classList.remove('grabbed'));
+lampEl.addEventListener('pointerup', endPress);
+lampEl.addEventListener('pointercancel', endPress);
 
 // --------------------------------------------------------------------- hover
 
 // Hover comes from the main process, which polls the cursor against the
-// window bounds — immune to per-pixel hit-testing and resize transients.
-// Collapse is still debounced briefly so a grazing exit doesn't flicker.
-let leaveTimer = null;
+// widget's shape — immune to per-pixel hit-testing, which keeps parts of a
+// transparent window from ever seeing the mouse.
+let hovering = false;
+let openTimer = null;
+let closeTimer = null;
+
+function scheduleClose() {
+  if (!expanded || closeTimer) return;
+  closeTimer = setTimeout(() => {
+    closeTimer = null;
+    if (!hovering && press === null) setExpanded(false);
+  }, CLOSE_DELAY_MS);
+}
+
 window.stoplight.onHover((over) => {
-  clearTimeout(leaveTimer);
-  if (over) {
-    if (!expanded) {
-      expanded = true;
-      render();
+  hovering = Boolean(over);
+  if (hovering) {
+    clearTimeout(closeTimer);
+    closeTimer = null;
+    if (!expanded && !openTimer) {
+      openTimer = setTimeout(() => {
+        openTimer = null;
+        if (hovering) setExpanded(true);
+      }, OPEN_DELAY_MS);
     }
   } else {
-    leaveTimer = setTimeout(() => {
-      expanded = false;
-      render();
-    }, 120);
+    clearTimeout(openTimer);
+    openTimer = null;
+    if (press === null) scheduleClose();
   }
 });
 
@@ -700,13 +750,19 @@ window.stoplight.onState((d) => {
   render();
 });
 window.stoplight.onUsage((u) => {
-  usage = u;
+  usage = u || { bars: [] };
   render();
 });
 window.stoplight.onConfig((c) => {
-  cfg = c;
-  root.style.zoom = cfg.zoom;
+  cfg = Object.assign({}, cfg, c);
+  root.style.zoom = cfg.scale;
+  layout();
   setPixelGrid();
   render();
 });
+
+buildTray();
+layout();
+setPixelGrid();
+watchPixelRatio();
 render();

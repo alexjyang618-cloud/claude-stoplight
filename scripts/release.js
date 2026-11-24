@@ -70,7 +70,8 @@ if (
 if (run('git', ['status', '--porcelain'])) {
   fail('there are uncommitted changes. Commit and push them first, so the release tag matches the build.');
 }
-const branch = run('git', ['rev-parse', '--abbrev-ref', 'HEAD']);
+// (a GitHub Actions checkout is a detached HEAD; the workflow names the branch)
+const branch = process.env.GITHUB_REF_NAME || run('git', ['rev-parse', '--abbrev-ref', 'HEAD']);
 const commit = run('git', ['rev-parse', 'HEAD']);
 const refs = run('git', ['ls-remote', `https://github.com/${repo}.git`, `refs/heads/${branch}`, `refs/tags/${tag}`]);
 if (/\srefs\/tags\//.test(refs)) {
@@ -80,9 +81,42 @@ if (!refs.startsWith(commit)) {
   fail(`the latest commit on ${branch} is not on GitHub (${repo}) yet. Run "git push" first.`);
 }
 
+// The release notes are this version's section of CHANGELOG.md, when it has
+// one; otherwise GitHub writes them from the commits.
+function changelogNotes() {
+  let text;
+  try {
+    text = fs.readFileSync(path.join(root, 'CHANGELOG.md'), 'utf8');
+  } catch {
+    return null;
+  }
+  const lines = text.split(/\r?\n/);
+  const start = lines.findIndex((line) => line.startsWith('## ') && line.includes(version));
+  if (start < 0) return null;
+  const rest = lines.slice(start + 1);
+  const end = rest.findIndex((line) => line.startsWith('## '));
+  const body = (end < 0 ? rest : rest.slice(0, end)).join('\n').trim();
+  return body || null;
+}
+
 const gh = findGh();
+const notes = changelogNotes();
+const notesFile = path.join(dist, 'release-notes.md');
+if (notes) fs.writeFileSync(notesFile, `${notes}\n`);
 execFileSync(
   gh,
-  ['release', 'create', tag, ...files, '--repo', repo, '--target', commit, '--title', `Clawd ${version}`, '--generate-notes'],
+  [
+    'release',
+    'create',
+    tag,
+    ...files,
+    '--repo',
+    repo,
+    '--target',
+    commit,
+    '--title',
+    `Clawd ${version}`,
+    ...(notes ? ['--notes-file', notesFile] : ['--generate-notes']),
+  ],
   { cwd: root, stdio: 'inherit' }
 );

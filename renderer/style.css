@@ -10,435 +10,138 @@
   display: none !important;
 }
 
-/* Helvetica Neue ships with the app (renderer/fonts), so the widget looks the
-   same on every machine; the rest of the stack is only a fallback. */
+/* Inter ships with the app (renderer/fonts, SIL Open Font License), so the
+   widget looks the same on every machine; the rest of the stack only covers
+   characters Inter's two subsets lack. */
 @font-face {
-  font-family: 'Helvetica Neue';
-  font-weight: 400;
+  font-family: 'Inter';
   font-style: normal;
-  src: url('fonts/HelveticaNeueRoman.otf') format('opentype');
+  font-weight: 100 900;
+  src: url('fonts/Inter-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 @font-face {
-  font-family: 'Helvetica Neue';
-  font-weight: 400;
-  font-style: italic;
-  src: url('fonts/HelveticaNeueItalic.ttf') format('truetype');
-}
-@font-face {
-  font-family: 'Helvetica Neue';
-  font-weight: 500;
+  font-family: 'Inter';
   font-style: normal;
-  src: url('fonts/HelveticaNeueMedium.otf') format('opentype');
-}
-@font-face {
-  font-family: 'Helvetica Neue';
-  font-weight: 600 800;
-  font-style: normal;
-  src: url('fonts/HelveticaNeueBold.otf') format('opentype');
+  font-weight: 100 900;
+  src: url('fonts/Inter-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 
 :root {
-  --ui-font: 'Helvetica Neue', -apple-system, BlinkMacSystemFont, 'SF Pro Text', Helvetica, Arial,
-    sans-serif;
+  --ui-font: 'Inter', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
 
-  /* Liquid Glass, as far as this window allows. The widget floats on a
-     transparent window, and nothing drawn in it can blur the desktop behind,
-     so the material is carried by everything else glass does: a translucent
-     body, a rim that catches the light at the top-left and again at the
-     bottom-right, a sheen pooled under the top edge, round shapes, and a
-     short contact shadow. The bodies stay dense because there is no blur to
-     keep text legible over a busy desktop: a window full of bright text
-     shows through the menu at whatever its body lets past, so the surface
-     that carries text lets through less than the housing does. Only the
-     functional layer is glass (the light's housing, the wait chip, the
-     menu); Clawd is content.
-
-     The glass follows the system appearance: smoky when Windows is dark,
-     frosted when it is light. */
-  --glass: rgba(50, 49, 46, 0.92); /* regular: carries text */
-  --glass-clear: rgba(56, 55, 52, 0.84); /* the light's housing: small, no text */
-  --rim-hi: rgba(255, 255, 255, 0.55);
-  --rim-lo: rgba(255, 255, 255, 0.09);
-  --rim-mid: rgba(255, 255, 255, 0.28);
-  --sheen: rgba(255, 255, 255, 0.1);
-  --edge: 0 0 0 1px rgba(0, 0, 0, 0.26); /* keeps the shape on a pale desktop */
-  --lift: 0 7px 14px -7px rgba(0, 0, 0, 0.5);
-  /* labels on glass: primary, secondary, tertiary */
-  --label: #f5f5f7;
-  --label-2: rgba(235, 235, 245, 0.66);
-  --label-3: rgba(235, 235, 245, 0.47);
-  --hover: rgba(255, 255, 255, 0.1);
-  --press: rgba(255, 255, 255, 0.17);
-  --track: rgba(255, 255, 255, 0.13);
-  /* status colours: the lamps', used the same way wherever a state is shown */
-  --red: #ff5f57;
-  --yellow: #febc2e;
-  --green: #28c840;
-  --blue: #4ea1ff;
-  --badge: #0a84ff;
-  --wait: #ff7069;
-  /* an unlit lamp is coloured glass with nothing behind it: each lit lamp's
-     hue at roughly a third of its chroma, the three lenses matched in
-     perceived lightness (about L* 35 on smoky glass; HSL lightness alone is
-     not perceptual, so the values differ per hue) */
-  --lens-red: linear-gradient(180deg, hsl(3 28% 36%), hsl(3 28% 31%));
-  --lens-yellow: linear-gradient(180deg, hsl(40 34% 29%), hsl(40 34% 24%));
-  --lens-green: linear-gradient(180deg, hsl(118 20% 30%), hsl(118 20% 25%));
-  --lens-rim: rgba(255, 255, 255, 0.12);
-  --lens-ring: rgba(0, 0, 0, 0.24);
-}
-
-@media (prefers-color-scheme: light) {
-  :root {
-    --glass: rgba(248, 248, 250, 0.93);
-    --glass-clear: rgba(250, 250, 252, 0.84);
-    --rim-hi: rgba(255, 255, 255, 1);
-    --rim-lo: rgba(255, 255, 255, 0.5);
-    --rim-mid: rgba(255, 255, 255, 0.8);
-    --sheen: rgba(255, 255, 255, 0.5);
-    --edge: 0 0 0 1px rgba(0, 0, 0, 0.13);
-    --lift: 0 7px 14px -7px rgba(0, 0, 0, 0.3);
-    --label: rgba(0, 0, 0, 0.88);
-    --label-2: rgba(60, 60, 67, 0.74);
-    --label-3: rgba(60, 60, 67, 0.56);
-    --hover: rgba(0, 0, 0, 0.06);
-    --press: rgba(0, 0, 0, 0.11);
-    --track: rgba(0, 0, 0, 0.1);
-    --red: #f0443c;
-    --yellow: #e8a400;
-    --green: #1fb53a;
-    --blue: #0071e3;
-    --badge: #0a84ff;
-    --wait: #d93025;
-    /* on frosted glass the unlit lenses are pale tints (about L* 80) */
-    --lens-red: linear-gradient(180deg, hsl(3 46% 82%), hsl(3 46% 77%));
-    --lens-yellow: linear-gradient(180deg, hsl(42 56% 76%), hsl(42 56% 71%));
-    --lens-green: linear-gradient(180deg, hsl(118 28% 77%), hsl(118 28% 72%));
-    --lens-rim: rgba(255, 255, 255, 0.5);
-    --lens-ring: rgba(0, 0, 0, 0.14);
-  }
-}
-
-/* Reduce Transparency or Increase Contrast: the glass turns solid */
-@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-  :root {
-    --glass: #2c2c2e;
-    --glass-clear: #2c2c2e;
-    --sheen: transparent;
-    --edge: 0 0 0 1px rgba(255, 255, 255, 0.4);
-    --label-2: rgba(235, 235, 245, 0.82);
-    --label-3: rgba(235, 235, 245, 0.7);
-  }
-}
-@media (prefers-color-scheme: light) and (prefers-reduced-transparency: reduce),
-  (prefers-color-scheme: light) and (prefers-contrast: more) {
-  :root {
-    --glass: #f2f2f7;
-    --glass-clear: #f2f2f7;
-    --edge: 0 0 0 1px rgba(0, 0, 0, 0.45);
-    --label-2: rgba(60, 60, 67, 0.88);
-    --label-3: rgba(60, 60, 67, 0.76);
-  }
+  /* The widget floats on a transparent window, and nothing drawn in it can
+     blur the desktop behind, so nothing here is translucent: a flat tray
+     carrying tiles of ink and paper, the way a shelf of desk instruments
+     reads over any wallpaper. The one colour is the lamp's. */
+  --tray: #c9c9cc;
+  --ink: #0e0e0f;
+  --paper: #ffffff;
+  /* text on ink: primary, secondary, tertiary */
+  --on-ink: #ffffff;
+  --on-ink-2: #a1a1a6;
+  --on-ink-3: #8e8e93;
+  /* text on paper */
+  --on-paper: #0e0e0f;
+  --on-paper-2: #5e5e63;
+  /* the states */
+  --red: #ff453a;
+  --amber: #ffb30f;
+  --green: #30d158;
+  --blue: #0a84ff;
+  --badge: #0064d2;
+  --unlit: #6e6e73;
+  --lamp: var(--unlit);
+  /* keeps an ink shape's edge when the desktop behind it is dark too */
+  --hair: 0 0 0 1px rgba(255, 255, 255, 0.16);
+  --spring: cubic-bezier(0.2, 1.3, 0.35, 1);
+  --settle: cubic-bezier(0.25, 0.9, 0.3, 1);
 }
 
 html,
 body {
+  /* fully transparent: with software rendering, Windows hit-tests per-pixel,
+     so empty areas pass clicks straight through to windows beneath. Hover is
+     tracked geometrically by the main process. */
   background: transparent;
   overflow: hidden;
   width: 100%;
   height: 100%;
 }
 
-body {
-  -webkit-app-region: drag;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  /* fully transparent: with software rendering, Windows hit-tests per-pixel,
-     so empty areas pass clicks straight through to windows beneath. Hover is
-     tracked geometrically by the main process; drag works on drawn pixels. */
-  background: transparent;
-}
-
-/* zoom is overridden from settings (widget size) */
+/* zoom is set from settings (widget size); 300 is geometry.js's WINDOW */
 #root {
-  zoom: 0.7;
-  display: flex;
-  flex-direction: column;
+  position: relative;
+  width: 300px;
+  height: 300px;
+  font-family: var(--ui-font);
 }
 
-#widget {
-  width: 264px;
-  height: 124px;
-  flex: none;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 8px;
-  padding: 6px 4px 14px;
-  transition: opacity 0.3s ease;
-}
-
-/* quiet mode: fade when green / no sessions */
-#widget.dim {
-  opacity: 0.5;
-}
-
-/* ---------------------------------------------------------------- the glass */
-
-/* A glass surface: the body, the sheen under its top edge, and a hairline
-   that holds its outline against a pale desktop. Its lift shadow is short and
-   pulled in under the shape, because a wide one smears into a tint on the
-   transparent window and would catch clicks meant for whatever is beneath. */
-.light,
-.wait-chip,
-#panel {
-  background: linear-gradient(180deg, var(--sheen), transparent 48px), var(--glass);
-  box-shadow: var(--edge), var(--lift);
-}
-
-/* the rim: a one-pixel ring, bright where the light strikes the top-left
-   edge, fading round the sides, and catching again at the bottom-right */
-.light::before,
-.wait-chip::before,
-#panel::before {
-  content: '';
+/* the tray's square: app.js places it, and everything in it */
+#space {
   position: absolute;
+  width: 291px;
+  height: 291px;
+}
+#space > *,
+#tray > * {
+  position: absolute;
+}
+
+.state-ready {
+  --lamp: var(--green);
+}
+.state-working {
+  --lamp: var(--amber);
+}
+.state-permission {
+  --lamp: var(--red);
+}
+
+/* ------------------------------------------------------------------ the tray */
+
+/* Shut, it is folded into the lamp. It opens out of it with a little spring,
+   the way a signal spreads from its source, and folds back faster than it
+   came. (The window itself never resizes.) */
+#tray {
   inset: 0;
-  padding: 1px;
-  border-radius: inherit;
-  background: linear-gradient(150deg, var(--rim-hi), var(--rim-lo) 34%, var(--rim-lo) 66%, var(--rim-mid));
-  -webkit-mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
-  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
-  pointer-events: none;
-}
-
-/* ------------------------------------------------------------ traffic light */
-
-.light {
-  position: relative;
-  display: flex;
-  padding: 10px 14px;
-  border-radius: 999px; /* no bottom margin: its base and Clawd's feet share a baseline */
-  background: linear-gradient(180deg, var(--sheen), transparent 70%), var(--glass-clear);
-}
-
-/* how long the oldest red session has been waiting */
-.wait-chip {
-  position: absolute;
-  top: -27px;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 3px 10px;
-  border-radius: 999px;
-  color: var(--wait);
-  font: 600 12px/1.4 var(--ui-font);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-/* turns that finished since you last looked: a blue badge on the housing's
-   corner, with a count when there is more than one */
-.done-badge {
-  position: absolute;
-  z-index: 1; /* over the housing's rim */
-  top: -5px;
-  right: -5px;
-  min-width: 15px;
-  height: 15px;
-  padding: 0 4px;
-  border-radius: 999px;
-  background: var(--badge);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.3),
-    0 0 0 1px rgba(0, 0, 0, 0.18);
-  color: #fff;
-  font: 700 11px/15px var(--ui-font);
-  font-variant-numeric: tabular-nums;
-  text-align: center;
-}
-
-/* macOS traffic-light buttons: a flat fill that lightens a touch toward the
-   bottom, a hairline bright rim, and a dark outline against the housing */
-.lamp {
-  position: relative;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  box-shadow:
-    inset 0 0 0 1px var(--lens-rim),
-    0 0 0 1px var(--lens-ring);
-  transition:
-    box-shadow 0.25s ease,
-    filter 0.3s ease,
-    width 0.3s ease,
-    margin 0.3s ease,
-    opacity 0.22s ease;
-}
-
-.lamp + .lamp {
-  margin-left: 9px;
-}
-
-/* collapsed (not hovered): only the lamp for the current state survives */
-#widget.collapsed .lamp {
-  margin-left: 0;
-}
-#widget.collapsed .lamp:not(.active) {
-  width: 0;
   opacity: 0;
-}
-
-/* unlit: coloured glass with nothing behind it (the lens colours are set with
-   the glass, per appearance). They darken slightly toward the bottom, the
-   opposite of the lit lamps. */
-.lamp.red {
-  background: var(--lens-red);
-}
-.lamp.yellow {
-  background: var(--lens-yellow);
-}
-.lamp.green {
-  background: var(--lens-green);
-}
-
-/* no sessions: the glass goes as dull as Clawd does, so "off" is never the
-   most colourful state */
-.state-off .lamp {
-  filter: saturate(0.7) brightness(0.88);
-}
-
-/* lit: the real button colours, with a restrained halo so the state still
-   reads from across the room */
-.state-permission .lamp.red {
-  background: linear-gradient(180deg, #f5524a, #ef6b62);
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.28),
-    0 0 0 1px var(--lens-ring),
-    0 0 12px 2px rgba(255, 95, 87, 0.35);
-  animation: breathe-red 2.2s ease-in-out infinite;
-}
-
-.state-working .lamp.yellow {
-  background: linear-gradient(180deg, #fbb400, #ffcd33);
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.3),
-    0 0 0 1px var(--lens-ring),
-    0 0 12px 2px rgba(254, 188, 46, 0.35);
-  animation: breathe-yellow 1.5s ease-in-out infinite;
-}
-
-.state-ready .lamp.green {
-  background: linear-gradient(180deg, #12be0c, #4fc338);
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.28),
-    0 0 0 1px var(--lens-ring),
-    0 0 12px 2px rgba(40, 200, 64, 0.35);
-}
-
-@keyframes breathe-yellow {
-  0%, 100% { filter: brightness(1); }
-  50% { filter: brightness(1.2); }
-}
-
-@keyframes breathe-red {
-  0%, 100% { filter: brightness(1); }
-  50% { filter: brightness(1.14); }
-}
-
-/* --- red for 5+ minutes: pulse harder --- */
-
-.state-permission.urgent .lamp.red {
-  animation: breathe-red-urgent 0.85s ease-in-out infinite;
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.34),
-    0 0 0 1px var(--lens-ring),
-    0 0 18px 5px rgba(255, 95, 87, 0.55);
-}
-
-@keyframes breathe-red-urgent {
-  0%, 100% { filter: brightness(0.95); }
-  50% { filter: brightness(1.5); }
-}
-
-/* the one place the glass itself is tinted: a wait that has turned urgent */
-.state-permission.urgent .wait-chip {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), transparent 70%), rgba(224, 68, 62, 0.94);
-  color: #fff;
-}
-
-
-/* ------------------------------------------------------ the menu (on hover) */
-
-/* An arch of glass rising over the widget. Its crown is a true half-disc (the
-   panel is 244px wide, so the top corners are rounded by 122px), and the
-   crown's rim is the plan usage gauge; the sessions hang below it, nearest
-   the pointer. With no usage to show there is no crown, and the panel is a
-   plain rounded stack of sessions.
-
-   app.js sets the bottom margin so the panel sits just above whatever Clawd
-   is wearing or holding (negative: it reaches down into the widget's empty
-   headroom); it stacks above him. */
-#panel {
-  -webkit-app-region: no-drag;
-  position: relative;
-  z-index: 1;
-  width: 244px;
-  align-self: center;
-  margin: 0 10px 6px;
-  display: flex;
-  flex-direction: column;
-  max-height: 420px;
-  overflow: hidden;
-  border-radius: 26px;
-  color: var(--label);
-  font: 12px/1.3 var(--ui-font);
-  /* closed by default. It grows out of the widget and settles with a little
-     spring, the way a glass menu comes out of its button; it leaves faster
-     than it arrives. (The window itself never resizes.) */
-  opacity: 0;
-  transform: translateY(14px) scale(0.86);
-  transform-origin: 50% 100%;
+  transform: scale(0.3);
   pointer-events: none;
-  transition: opacity 0.16s ease, transform 0.2s ease-in, margin-bottom 0.2s ease;
+  transition: opacity 0.12s ease, transform 0.16s ease-in;
 }
-
-#panel.crowned {
-  border-radius: 122px 122px 26px 26px;
-}
-/* the crown alone: its foot is squarer, so the two radii still fit its height */
-#panel.crowned:not(.has-rows) {
-  border-radius: 122px 122px 16px 16px;
-}
-
-#panel.open {
+.open #tray {
   opacity: 1;
   transform: none;
   pointer-events: auto;
-  transition: opacity 0.2s ease, transform 0.42s cubic-bezier(0.2, 1.3, 0.35, 1), margin-bottom 0.2s ease;
+  -webkit-app-region: drag; /* move the widget by any tile */
+  transition: opacity 0.14s ease, transform 0.36s var(--spring);
 }
 
-/* --- the crown: plan usage (5-hour, weekly, and the top model's weekly) --- */
-
-.gauge {
-  position: relative;
-  flex: none;
-  height: 124px;
-}
-#panel:not(.has-rows) .gauge {
-  height: 138px;
+#plate {
+  inset: 0;
+  background: var(--tray);
 }
 
-.arcs {
-  position: absolute;
+#tiles {
   left: 0;
   top: 0;
-  width: 244px;
-  height: 122px;
+  width: 100%;
+  height: 100%;
   overflow: visible;
 }
+#tile-usage {
+  fill: var(--ink);
+}
+#tile-card {
+  fill: var(--paper);
+}
 
-/* one arc of the rim per limit, concentric with the crown's edge */
+/* --- usage: three gauges up the rim, each ending level with its legend row --- */
+
 .gtrack,
 .gfill {
   fill: none;
@@ -446,225 +149,474 @@ body {
   stroke-linecap: round;
 }
 .gtrack {
-  stroke: var(--track);
+  stroke: rgba(255, 255, 255, 0.18);
 }
 /* the paths are 100 units long, so the offset is what is left of the limit */
 .gfill {
-  stroke: var(--green);
+  stroke: var(--on-ink);
   stroke-dasharray: 100;
-  transition: stroke-dashoffset 0.6s cubic-bezier(0.25, 0.9, 0.3, 1) 0.06s, stroke 0.3s ease;
+  transition: stroke-dashoffset 0.6s var(--settle) 0.1s, stroke 0.3s ease, stroke-opacity 0.3s ease;
 }
 .gfill.warn {
-  stroke: var(--yellow);
+  stroke: var(--amber);
 }
 .gfill.high {
   stroke: var(--red);
 }
-/* shut, the arcs empty (once the panel has faded), so they sweep up to their
-   readings each time it opens */
-#panel:not(.open) .gfill {
+/* a figure that could not be refreshed: still shown, but plainly old */
+.gfill.stale {
+  stroke-opacity: 0.4;
+}
+/* shut, the gauges empty (once the tray has folded), so they sweep up to
+   their readings each time it opens */
+#space:not(.open) .gfill {
   stroke-dashoffset: 100 !important;
-  transition: stroke-dashoffset 0s linear 0.25s;
+  transition: stroke-dashoffset 0s linear 0.2s;
 }
 
-/* a reading: the limit's name, how much of it is used, and the time until it
-   resets, centred on the radius under its arc (app.js places and sizes it) */
-.readout {
+#legend,
+#rows {
+  inset: 0;
+  pointer-events: none;
+}
+
+.lrow {
   position: absolute;
-  transform: translate(-50%, -50%);
   display: flex;
-  flex-direction: column;
   align-items: center;
-  line-height: 1.2;
+  justify-content: space-between;
+  gap: 6px;
+  color: var(--on-ink);
+  font-size: 11px;
+  line-height: 16px;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  pointer-events: auto;
+  -webkit-app-region: no-drag; /* so its tooltip can show */
 }
-
-.rlabel {
-  max-width: 100%;
+/* the name and figure stay beside the gauge they belong to */
+.fx .lrow {
+  flex-direction: row-reverse;
+}
+.lmain {
+  display: flex;
+  gap: 5px;
+  min-width: 0;
+}
+.llabel {
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--label-2);
-  font-size: 11px;
+  color: var(--on-ink-2);
   font-weight: 500;
 }
-
-.rpct {
-  font-size: 16px;
+.lval {
+  flex: none;
   font-weight: 600;
-  line-height: 1.15;
-  font-variant-numeric: tabular-nums;
 }
-.rpct::after {
-  content: '%';
-  margin-left: 1px;
-  color: var(--label-2);
-  font-size: 10.5px;
-  font-weight: 500;
-}
-
-.rreset {
-  color: var(--label-3);
-  font-size: 10.5px;
-  font-variant-numeric: tabular-nums;
-}
-
-/* more than three limits on the rim: the readings set smaller (app.js also
-   narrows them to the room between neighbours) */
-.dense .rpct {
-  font-size: 13px;
-}
-.dense .rlabel,
-.dense .rreset,
-.dense .rpct::after {
-  font-size: 10px;
-}
-
-/* stale or failed fetch: keep the last numbers, but say so */
-.unote {
+.lrest {
   flex: none;
-  padding: 0 20px 5px;
-  color: var(--label-3);
-  font-size: 10.5px;
-  text-align: center;
+  color: var(--on-ink-3);
 }
-#panel:not(.crowned) .unote {
-  padding-top: 11px;
-}
-#panel:not(.crowned):not(.has-rows) .unote {
-  padding-bottom: 11px;
+.lrow.stale,
+.lrow.stale .llabel {
+  color: var(--on-ink-3);
 }
 
-/* --- the sessions --- */
-
-.rows {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-height: 0;
-  padding: 6px;
-  overflow-y: auto;
+/* no figures at all yet */
+#uhint {
+  color: var(--on-ink-3);
+  font-size: 11px;
+  line-height: 15px;
 }
-.crowned .rows,
-.unote:not([hidden]) + .rows {
-  padding-top: 0;
-}
-.rows:empty {
-  display: none;
+.fx #uhint {
+  text-align: right;
 }
 
-.rows::-webkit-scrollbar {
-  width: 5px;
-}
-.rows::-webkit-scrollbar-thumb {
-  background: var(--track);
-  border-radius: 3px;
-}
+/* --- the sessions: most urgent nearest the lamp, text hung from the screen edge --- */
 
-/* dot, name, state · time; below them, when there is one, what the session
-   is doing or waiting on. A row is a capsule, concentric with the panel's
-   foot (26px corner, 6px in). */
 .row {
-  flex: none;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  column-gap: 8px;
-  row-gap: 1px;
-  padding: 6px 13px 6px 12px;
-  border-radius: 20px;
+  position: absolute;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 2px 6px;
+  border-radius: 9px;
+  color: var(--on-paper);
+  white-space: nowrap;
   outline: none;
   cursor: pointer;
-  transition: background-color 0.14s ease, transform 0.14s ease;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+  transition: background-color 0.14s ease;
 }
 .row * {
   cursor: pointer;
 }
-
-/* the highlight is a bead of glass that forms under the pointer */
+.fx .row {
+  flex-direction: row-reverse;
+}
 .row:hover,
 .row:focus-visible {
-  background: var(--hover);
-  box-shadow: inset 0 1px 0 var(--rim-lo);
+  background: rgba(0, 0, 0, 0.07);
 }
 .row:active {
-  background: var(--press);
-  transform: scale(0.975);
+  background: rgba(0, 0, 0, 0.13);
 }
 
-/* status dots: the lamps in miniature, with their thin ring and no glow */
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+.rtext {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 0;
+}
+.fx .rtext {
+  align-items: flex-start;
+}
+
+/* how long, and who */
+.l1 {
+  display: flex;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 17px;
+  font-weight: 500;
+}
+.dur {
   flex: none;
-  box-shadow:
-    inset 0 0 0 0.5px rgba(255, 255, 255, 0.25),
-    0 0 0 1px var(--lens-ring);
+  color: var(--on-paper-2);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
 }
-.dot.ready {
-  background: var(--green);
-}
-.dot.working {
-  background: var(--yellow);
-}
-.dot.permission {
-  background: var(--red);
-}
-
 .name {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* its state, and what it is doing or waiting on */
+.l2 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--on-paper-2);
+  font-size: 10.5px;
+  line-height: 14px;
+}
+
+/* the state's colour is never the only signal: line two names it */
+.bead {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 4.5px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.28);
+}
+.bead.ready {
+  background: var(--green);
+}
+.bead.working {
+  background: var(--amber);
+}
+.bead.permission {
+  background: var(--red);
+}
+.bead.finished {
+  background: var(--blue);
+}
+
+/* a lone session has the card to itself (its time is the pill's) */
+.row.hero .dur {
+  display: none;
+}
+.row.hero .l1 {
+  font-size: 14px;
+  line-height: 19px;
+  font-weight: 600;
+}
+.row.hero .l2 {
+  font-size: 11.5px;
+  line-height: 16px;
+}
+.row.hero .bead {
+  margin-top: 5.5px;
+}
+/* more sessions than rows: the rows close up to leave a line for the count */
+.row.tight .l1 {
+  line-height: 16px;
+}
+.row.tight .l2 {
+  line-height: 13px;
+}
+.row.tight .bead {
+  margin-top: 4px;
+}
+
+#more,
+#empty {
+  color: var(--on-paper-2);
   white-space: nowrap;
+}
+#more {
+  font-size: 10.5px;
+  line-height: 13px;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+}
+#empty {
+  font-size: 12px;
+  line-height: 17px;
   font-weight: 500;
 }
 
-.meta {
-  color: var(--label-2);
-  font-size: 11px;
+/* --- the status pill: the state in a word, and how long it has held --- */
+
+#pill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 16px 0 18px;
+  border-radius: 22px;
+  background: var(--ink);
+  color: var(--on-ink);
   white-space: nowrap;
-  font-variant-numeric: tabular-nums;
+  transition: background-color 0.25s ease, color 0.25s ease;
 }
-
-/* a finished turn you haven't looked at yet: the badge's blue */
-.row.finished .meta {
-  color: var(--blue);
+/* the time stays beside the lamp */
+.fx #pill {
+  flex-direction: row-reverse;
+  padding: 0 18px 0 16px;
 }
-
-.sub {
-  grid-column: 2 / -1;
-  color: var(--label-3);
-  font-size: 10.5px;
+#pill-label {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+}
+#pill-time {
+  flex: none;
+  font-size: 26px;
+  line-height: 44px;
+  font-weight: 300;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+#pill-time.long {
+  font-size: 19px;
+  font-weight: 400;
+}
+/* a wait that has turned urgent tints the pill itself */
+.urgent #pill {
+  background: var(--red);
+  color: var(--ink);
+}
+.urgent #pill-time {
+  font-weight: 400;
 }
 
-/* Reduce Motion: the panel only fades, and the gauge is simply there */
+/* --------------------------------------------------------------- at rest */
+
+/* how long the oldest waiting session has waited, beside the lamp */
+#wait {
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 18px;
+  background: var(--ink);
+  box-shadow: var(--hair);
+  color: var(--on-ink);
+  font-size: 20px;
+  line-height: 36px;
+  font-weight: 300;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  -webkit-app-region: drag;
+  transition: opacity 0.12s ease, background-color 0.25s ease, color 0.25s ease;
+}
+.urgent #wait {
+  background: var(--red);
+  box-shadow: none;
+  color: var(--ink);
+  font-weight: 400;
+}
+/* the opened pill says the same and more */
+.open #wait {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* turns that finished since you last looked: a blue badge on the lamp's
+   shoulder, with a count when there is more than one */
+#badge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--badge);
+  color: #fff;
+  font-size: 11px;
+  line-height: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+/* opened, the finished rows say so themselves */
+.open #badge {
+  opacity: 0;
+}
+
+/* red for 5+ minutes: a ring keeps spreading from the lamp */
+#pulse {
+  border: 2px solid var(--red);
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+}
+.urgent:not(.open) #pulse {
+  animation: pulse 1.4s ease-out infinite;
+}
+@keyframes pulse {
+  0% { opacity: 0.85; transform: scale(0.76); }
+  100% { opacity: 0; transform: scale(1.12); }
+}
+
+/* ------------------------------------------------------------------ the lamp */
+
+/* At rest it is the whole widget: a dot of the state's colour in a dark
+   bezel, and the handle the widget is dragged by. Opened, the colour becomes
+   a ring and Clawd shows inside it; then he is what a press reaches. */
+#lamp {
+  width: 44px;
+  height: 44px;
+  -webkit-app-region: drag;
+  transition: opacity 0.3s ease;
+}
+.open #lamp {
+  -webkit-app-region: no-drag;
+  cursor: grab;
+}
+.open #lamp:active {
+  cursor: grabbing;
+}
+#lamp > * {
+  position: absolute;
+}
+
+/* quiet mode: fade when green / no sessions */
+.dim:not(.open) #lamp,
+.dim:not(.open) #badge {
+  opacity: 0.5;
+}
+
+.bezel {
+  inset: 0;
+  border-radius: 50%;
+  background: var(--ink);
+  box-shadow: var(--hair);
+  transform: scale(0.8182); /* 36px at rest */
+  transition: transform 0.3s var(--spring);
+}
+.open .bezel {
+  transform: none;
+  box-shadow: none;
+}
+
+/* the colour: a 26px dot at rest, a 3px ring round Clawd when opened */
+.glow {
+  inset: 0;
+  border-radius: 50%;
+  background: var(--lamp);
+  box-shadow: inset 0 0 0 3px var(--lamp);
+  transform: scale(0.5909);
+  transition: transform 0.3s var(--spring), background-color 0.2s ease, box-shadow 0.2s ease;
+}
+.open .glow {
+  transform: none;
+  background: transparent;
+}
+/* no sessions: a hollow ring, so unlit is never mistaken for a colour */
+.state-off .glow {
+  background: transparent;
+  box-shadow: inset 0 0 0 4px var(--unlit);
+  transform: scale(0.5);
+}
+.open.state-off .glow {
+  box-shadow: inset 0 0 0 3px var(--unlit);
+  transform: none;
+}
+/* working: the dot draws in to leave room for the arc going round it */
+.state-working:not(.open) .glow {
+  transform: scale(0.4545);
+}
+/* waiting on you: the dot breathes */
+.state-permission:not(.open) .glow {
+  animation: breathe 2.2s ease-in-out infinite;
+}
+.state-permission.urgent:not(.open) .glow {
+  animation-duration: 0.85s;
+}
+@keyframes breathe {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.22); }
+}
+
+.orbit {
+  left: 4px;
+  top: 4px;
+  width: 36px;
+  height: 36px;
+  stroke: var(--lamp);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.state-working:not(.open) .orbit {
+  opacity: 1;
+  animation: orbit 1.6s linear infinite;
+}
+@keyframes orbit {
+  to { transform: rotate(360deg); }
+}
+
+/* Reduce Motion: the tray only fades, the gauges are simply there, and the
+   lamp's states hold still (the working arc stays, as a shape) */
 @media (prefers-reduced-motion: reduce) {
-  #panel,
-  #panel.open {
+  #tray,
+  .open #tray {
     transform: none;
     transition: opacity 0.2s ease;
   }
   .gfill,
-  #panel:not(.open) .gfill {
+  #space:not(.open) .gfill {
     transition: none;
   }
-  .row:active {
-    transform: none;
+  .bezel,
+  .glow {
+    transition: none;
+  }
+  .state-working:not(.open) .orbit,
+  .state-permission:not(.open) .glow {
+    animation: none;
+  }
+  .urgent:not(.open) #pulse {
+    animation: none;
+    opacity: 0.7;
   }
 }
 
 /* ------------------------------------------------------------------- Clawd */
 
 .clawd {
-  position: relative;
-  width: 86px;
-  height: 86px; /* 100 x 100 viewBox, feet on the bottom edge */
-  margin-bottom: 0;
-  transition: filter 0.3s ease, opacity 0.3s ease;
-  -webkit-app-region: no-drag; /* so Clawd can be grabbed (move the widget by its light) */
-  cursor: grab;
+  /* app.js sizes and places him so that each cell of his 12 x 8 pixel grid is
+     a whole number of device pixels (25px here: 2px a cell at 1x) */
+  left: 9px;
+  top: 5.5px;
+  width: 25px;
+  height: 25px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease, filter 0.3s ease;
   /* Chromium gives every part with a running transform or opacity animation
      its own compositor layer, and composites it at a fractional offset with
      bilinear filtering: Clawd came out blurred and fringed in every animated
@@ -675,20 +627,13 @@ body {
      (--dp) and CSS px under #root's zoom (--cp). Every move below is rounded
      to whole device pixels, so each edge shifts by the same amount and no
      part grows or shrinks as he steps. app.js keeps these in step with the
-     widget size and the display's scale; these defaults are 70% at 1x. */
-  --dp: 1.66113px; /* 100 / (86 * 0.7) */
-  --cp: 1.42857px; /* 1 / 0.7 */
-  --eye-shut: 0.2076; /* a closed eye: 1 device px of its 8 units */
-  --walk-steps: 119; /* the bedtime walk, 170px, in device px */
+     widget size and the display's scale; these defaults are 100% at 1x. */
+  --dp: 4px;
+  --cp: 1px;
+  --eye-shut: 0.5; /* a closed eye: 1 device px of its 8 units */
 }
-
-/* while grabbed, the widget's Clawd yields to the overlay one */
-.clawd.grabbed {
-  opacity: 0 !important;
-  cursor: grabbing;
-}
-.clawd:active {
-  cursor: grabbing;
+.open .clawd {
+  opacity: 1;
 }
 
 /* Poses swap in a single frame, like sprite frames. A crossfade drew two
@@ -716,14 +661,10 @@ body {
 /* no sessions: Clawd goes completely still and slightly dim */
 .state-off .clawd {
   filter: saturate(0.7) brightness(0.88);
-  opacity: 0.85;
 }
 .state-off .scene * {
   animation: none !important;
 }
-
-/* --- the shaded side: lit from the right, so his left edge, left arm and
-   nearest leg sit in a darker, static shade (see scripts/clawd-scenes.js) --- */
 
 /* Clawd moves the way pixel art does: each position is held, then the next
    one replaces it with nothing in between (step-end), so he never smears
@@ -826,85 +767,11 @@ body {
   50% { transform: translateY(round(-4px, var(--dp))); }
 }
 
-/* --- dozing: green for a few minutes --- */
+/* --- bedtime: green for a few minutes. He sits down on his folded legs (his
+   body steps down over them from standing height), hugs the teddy, and the
+   blanket lands on his lap. Both .settle groups (body, then the arms over
+   the blanket) step together. --- */
 
-.sleepy #scene-idle .bob {
-  animation-duration: 5.2s;
-}
-/* half-shut, but never thinner than a device pixel */
-.sleepy #scene-idle .eyes {
-  animation: none;
-  transform: scaleY(max(0.36, var(--eye-shut)));
-}
-
-.zzz {
-  position: absolute;
-  left: 64px;
-  top: -4px;
-  width: 26px;
-  height: 32px;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.6s ease;
-}
-/* the z's only once he is actually tucked in, rising off the side of his
-   head his nightcap has not flopped over */
-.asleep .zzz {
-  opacity: 1;
-  left: 62px;
-  top: 10px;
-}
-
-/* --- bedtime: he walks off, comes back with his things, settles down --- */
-
-/* walking out of the widget (to the right) and back in: 170px, one device
-   pixel per step (app.js sets --walk-steps to that many pixels) */
-.clawd.bed-leaving {
-  transform: translateX(calc(var(--walk-steps) * var(--cp)));
-  transition: transform 1.7s steps(var(--walk-steps), end);
-}
-.clawd.bed-away {
-  transform: translateX(calc(var(--walk-steps) * var(--cp)));
-  transition: none;
-}
-.clawd.bed-returning {
-  transform: none;
-  transition: transform 1.7s steps(var(--walk-steps), end);
-}
-/* nothing in his hands on the way out */
-.clawd.bed-leaving #scene-bedwalk .prop,
-.clawd.bed-away #scene-bedwalk .prop {
-  visibility: hidden;
-}
-
-/* walk cycle: alternating leg pairs + a slight strut */
-#scene-bedwalk.on .legsA {
-  animation: step 0.36s step-end infinite;
-}
-#scene-bedwalk.on .legsB {
-  animation: step 0.36s step-end infinite;
-  animation-delay: 0.18s;
-}
-#scene-bedwalk.on .torso {
-  animation: strut 0.36s step-end infinite;
-}
-
-/* a pair of legs is up for the first half of each stride */
-@keyframes step {
-  0% { transform: translateY(round(-4px, var(--dp))); }
-  50% { transform: none; }
-}
-
-@keyframes strut {
-  0% { transform: none; }
-  25% { transform: translateY(round(-2px, var(--dp))); }
-  50% { transform: none; }
-  75% { transform: translateY(round(-2px, var(--dp))); }
-}
-
-/* settling down: he sits on his folded legs (his body steps down over them
-   from standing height), hugs the teddy, and the blanket lands on his lap.
-   Both .settle groups (body, then the arms over the blanket) step together. */
 #scene-sleep.on .settle {
   animation: settle 0.45s step-end both;
 }
@@ -938,73 +805,51 @@ body {
   100% { transform: none; opacity: 1; }
 }
 
-/* startled awake: a big jump, and the props tumble off the bottom */
-.clawd.startle {
-  animation: startle 0.6s step-end;
-}
-
-@keyframes startle {
-  0% { transform: translateY(round(-10px, var(--cp))); }
-  20% { transform: translateY(round(-24px, var(--cp))); }
-  50% { transform: translateY(round(-10px, var(--cp))); }
-  75% { transform: none; }
-}
-
-#scene-props {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  overflow: visible;
+/* the z's rise off the lamp once he is tucked in, over the card above it */
+.zzz {
+  width: 26px;
+  height: 32px;
   pointer-events: none;
   opacity: 0;
+  transition: opacity 0.6s ease;
 }
-#scene-props.drop {
+.open.asleep .zzz {
   opacity: 1;
 }
-#scene-props .drop-cap,
-#scene-props .drop-teddy,
-#scene-props .drop-blanket {
-  transform-box: fill-box;
-  transform-origin: center;
-}
-#scene-props.drop .drop-blanket {
-  animation: drop 0.9s cubic-bezier(0.4, 0, 1, 1) both;
-}
-#scene-props.drop .drop-teddy {
-  animation: drop 0.9s cubic-bezier(0.4, 0, 1, 1) 0.08s both;
-}
-#scene-props.drop .drop-cap {
-  animation: drop 0.9s cubic-bezier(0.4, 0, 1, 1) 0.16s both;
-}
-
-@keyframes drop {
-  0% { transform: translateY(-14px) rotate(0deg); }
-  100% { transform: translateY(260px) rotate(50deg); }
+/* a lamp at the top of the screen has nowhere above it for them to rise */
+.fy .zzz {
+  display: none;
 }
 .zzz span {
   position: absolute;
   left: 0;
   bottom: 0;
-  font: 700 11px/1 var(--ui-font);
-  color: #e8e9ec;
-  text-shadow: 0 0 2px rgba(0, 0, 0, 0.6);
+  font: 700 10px/1 var(--ui-font);
+  color: var(--on-paper);
   opacity: 0;
   animation: zz 3s ease-out infinite;
 }
 .zzz span:nth-child(2) {
   animation-delay: 1s;
-  font-size: 13px;
+  font-size: 12px;
 }
 .zzz span:nth-child(3) {
   animation-delay: 2s;
-  font-size: 15px;
+  font-size: 14px;
 }
 
 @keyframes zz {
   0% { opacity: 0; transform: translate(0, 0); }
   15% { opacity: 0.9; }
-  100% { opacity: 0; transform: translate(10px, -26px); }
+  100% { opacity: 0; transform: translate(8px, -22px); }
+}
+.fx .zzz span {
+  animation-name: zz-left;
+}
+@keyframes zz-left {
+  0% { opacity: 0; transform: translate(0, 0); }
+  15% { opacity: 0.9; }
+  100% { opacity: 0; transform: translate(-8px, -22px); }
 }
 
 /* --- thinking: no tool running yet, an idea just out of reach ---
@@ -1129,9 +974,9 @@ body {
 
 @keyframes hop {
   0% { transform: none; }
-  15% { transform: translateY(round(-8px, var(--cp))); }
-  35% { transform: translateY(round(-14px, var(--cp))); }
-  60% { transform: translateY(round(-8px, var(--cp))); }
+  15% { transform: translateY(round(-3px, var(--cp))); }
+  35% { transform: translateY(round(-5px, var(--cp))); }
+  60% { transform: translateY(round(-3px, var(--cp))); }
   80% { transform: none; }
 }
 
@@ -1140,20 +985,20 @@ body {
 }
 
 @keyframes flinch {
-  0% { transform: translateX(round(-4px, var(--cp))); }
-  20% { transform: translateX(round(4px, var(--cp))); }
-  40% { transform: translateX(round(-2px, var(--cp))); }
-  60% { transform: translateX(round(2px, var(--cp))); }
+  0% { transform: translateX(round(-2px, var(--cp))); }
+  20% { transform: translateX(round(2px, var(--cp))); }
+  40% { transform: translateX(round(-1px, var(--cp))); }
+  60% { transform: translateX(round(1px, var(--cp))); }
   80% { transform: none; }
 }
 
 /* --- petting: a side-to-side shimmy in held steps, happy squint --- */
 
 .clawd.tilt-l {
-  transform: translateX(round(-3px, var(--cp)));
+  transform: translateX(round(-2px, var(--cp)));
 }
 .clawd.tilt-r {
-  transform: translateX(round(3px, var(--cp)));
+  transform: translateX(round(2px, var(--cp)));
 }
 .clawd.happy .eyes {
   animation: none !important;

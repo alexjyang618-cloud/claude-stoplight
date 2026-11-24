@@ -1,15 +1,16 @@
 {
   "name": "claude-stoplight",
   "productName": "Clawd",
-  "version": "1.3.21",
-  "description": "A tiny desktop traffic light that shows what Claude Code is doing: green = idle, yellow = working, red = waiting on you.",
+  "version": "1.4.0",
+  "description": "A lamp in the corner of your screen that shows what Claude Code is doing: green = idle, yellow = working, red = waiting on you.",
   "main": "main.js",
   "author": "Alex Yang",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
+    "test": "node --test",
     "icon": "node scripts/make-icon.js",
-    "dist": "npm run icon && electron-builder --win \"-c.directories.output=%USERPROFILE%\\.claude-stoplight\\build\" && node scripts/copy-dist.js",
+    "dist": "npm run icon && electron-builder --win --publish never \"-c.directories.output=%USERPROFILE%\\.claude-stoplight\\build\" && node scripts/copy-dist.js",
     "release": "node scripts/release.js"
   },
   "dependencies": {
@@ -29,6 +30,7 @@
     "files": [
       "main.js",
       "preload.js",
+      "lib/**/*",
       "renderer/**/*",
       "build/icon.ico"
     ],

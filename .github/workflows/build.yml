@@ -1,0 +1,99 @@
+name: Build and test
+
+# Builds the Windows installer and exercises the real app on Windows: the unit
+# tests (which include the status line wrapper, run through Git Bash and
+# through PowerShell), then a scripted run of the widget itself, from source
+# and from the built app (lib/smoke.js).
+#
+# A commit whose message carries [release] is then published as the GitHub
+# release for its version, which is what installed copies update from. Nothing
+# is published unless every step before it passed.
+on:
+  push:
+    branches: ['**']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test
+
+      # Each run gets scratch folders for the widget's files and for Claude
+      # Code's, so it finds no settings but the ones put there for it.
+      - name: Scripted run from source, no status line configured
+        shell: pwsh
+        run: |
+          $base = Join-Path $env:RUNNER_TEMP 'clawd-a'
+          $env:CLAWD_SMOKE = Join-Path $base 'out'
+          $env:CLAWD_DATA_DIR = Join-Path $base 'data'
+          $env:CLAUDE_CONFIG_DIR = Join-Path $base 'claude'
+          npx electron . "--user-data-dir=$(Join-Path $base 'profile')"
+          node scripts/check-smoke.js $env:CLAWD_SMOKE plain
+
+      # A status line already configured must be kept: wrapped, tried, and
+      # only then pointed at. The folders have a space in their names, as a
+      # user profile may.
+      - name: Scripted run from source, with a status line of the user's own
+        shell: pwsh
+        run: |
+          $base = Join-Path $env:RUNNER_TEMP 'clawd b'
+          $claude = Join-Path $base 'claude'
+          New-Item -ItemType Directory -Force $claude | Out-Null
+          $script = Join-Path $base 'their status.js'
+          [System.IO.File]::WriteAllText($script, "process.stdin.resume(); process.stdin.on('end', () => console.log('their status line'));")
+          $settings = @{ statusLine = @{ type = 'command'; command = ('node "' + ($script -replace '\\', '/') + '"'); padding = 1 } }
+          [System.IO.File]::WriteAllText((Join-Path $claude 'settings.json'), ($settings | ConvertTo-Json -Depth 5))
+          $env:CLAWD_SMOKE = Join-Path $base 'out'
+          $env:CLAWD_DATA_DIR = Join-Path $base 'data'
+          $env:CLAUDE_CONFIG_DIR = $claude
+          npx electron . "--user-data-dir=$(Join-Path $base 'profile')"
+          Get-Content (Join-Path $env:CLAWD_DATA_DIR 'liveness.log') -ErrorAction SilentlyContinue | Select-String 'status line'
+          node scripts/check-smoke.js $env:CLAWD_SMOKE wrap
+
+      - name: Build the installer
+        run: npm run dist
+
+      - name: Scripted run of the built app
+        shell: pwsh
+        run: |
+          $exe = Join-Path $env:USERPROFILE '.claude-stoplight\build\win-unpacked\Clawd.exe'
+          $base = Join-Path $env:RUNNER_TEMP 'clawd-c'
+          $env:CLAWD_SMOKE = Join-Path $base 'out'
+          $env:CLAWD_DATA_DIR = Join-Path $base 'data'
+          $env:CLAUDE_CONFIG_DIR = Join-Path $base 'claude'
+          Start-Process -FilePath $exe -ArgumentList "--user-data-dir=$(Join-Path $base 'profile')" -Wait
+          node scripts/check-smoke.js $env:CLAWD_SMOKE plain
+
+      - name: Keep the installer and what the runs showed
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clawd-${{ github.sha }}
+          if-no-files-found: warn
+          path: |
+            dist/
+            ${{ runner.temp }}/clawd*/out/
+
+      - name: Publish the release
+        if: contains(github.event.head_commit.message, '[release]')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release.js

@@ -1,6 +1,5 @@
-// Regenerates Clawd's pixel art: the widget's pose scenes (renderer/index.html,
-// between the clawd-scenes markers) and the overlay's hanging / walking
-// sprites (renderer/overlay.html, between the clawd-sprites markers). Run
+// Regenerates Clawd's pixel art: the pose scenes shown inside the widget's lamp
+// (renderer/index.html, between the clawd-scenes markers). Run
 // `node scripts/clawd-scenes.js` after editing and commit the regenerated HTML.
 //
 // The base body is the reference drawing exactly: a 12 x 8 pixel grid,
@@ -14,10 +13,8 @@
 //     . . O . O . . O . O . .      row 6   legs: 1 x 2 at columns 2, 4, 7, 9
 //     . . O . O . . O . O . .      row 7
 //
-// drawn at 8 viewBox units per grid cell in a 100 x 100 box (widget scenes and
-// the walk sprite), feet on y=100 and centred on x=52. The hang sprite is the
-// same drawing shifted by +10,+20 in a 150 x 120 box, hanging by his left arm.
-// Clawd is lit from the right: his left edge, left arm and nearest leg carry a
+// drawn at 8 viewBox units per grid cell in a 100 x 100 box, feet on y=100 and
+// centred on x=52. Clawd is lit from the right: his left edge, left arm and nearest leg carry a
 // darker shade, one grid cell wide.
 //
 // Every pose is this same drawing: the same body, the same 2 x 2 arms, the same
@@ -77,7 +74,7 @@ const C = {
 const rect = (x, y, w, h, fill, attrs = '') =>
   `<rect${attrs ? ' ' + attrs : ''} x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}"/>`;
 
-// A part is a function of the offset; `o` shifts everything for the hang sprite.
+// A part is a function of the offset; `o` shifts everything (asleep, he sits lower).
 function P(o) {
   const R = (x, y, w, h, fill, attrs) => rect(x + o.dx, y + o.dy, w, h, fill, attrs);
   const G = (attrs, inner) => `<g ${attrs}>${inner.join('')}</g>`;
@@ -224,16 +221,6 @@ function P(o) {
       R(75, 69, 2, 2, C.ink),
     ]);
   // ------------------------------------------------------------ bedtime props
-  // nightcap on the standing head (head top is y=36): brim, a floppy cone
-  // leaning left, pompom
-  const nightcapRects = () => [
-    [24, 32, 56, 5, C.capTrim],
-    [28, 23, 46, 9, C.cap],
-    [28, 15, 28, 8, C.cap],
-    [26, 9, 14, 6, C.cap],
-    [20, 4, 10, 8, C.capTrim],
-  ];
-  const nightcap = (cls = 'prop cap') => G(`class="${cls}"`, nightcapRects().map((r) => R(...r)));
   // teddy bear, drawn with its top-left at (x, y); 16 wide, 26 tall
   const teddy = (x, y, cls = 'prop teddy') =>
     G(`class="${cls}"`, [
@@ -248,14 +235,6 @@ function P(o) {
       R(x + 13, y + 14, 3, 6, C.teddy),
       R(x + 3, y + 22, 4, 4, C.teddy),
       R(x + 9, y + 22, 4, 4, C.teddy),
-    ]);
-  // folded blanket bundle hanging from the right arm (standing pose)
-  const blanketBundle = (cls = 'prop blanket') =>
-    G(`class="${cls}"`, [
-      R(84, 66, 18, 16, C.blanket),
-      R(84, 72, 18, 3, C.blanketHi),
-      R(94, 82, 6, 8, C.blanket),
-      R(96, 90, 4, 6, C.blanket),
     ]);
   // ------------------------------------------------------------ asleep
   // Asleep he sits down on his folded legs: scenes() draws these with P
@@ -282,7 +261,7 @@ function P(o) {
     ]);
   return {
     R, G, legs, leg, torso, armL, armR, eyes, hardhat, hammerUp, hammerDown, watchArm, glass, laptop, bulb,
-    bubble, stopwatch, nightcap, teddy, blanketBundle, shutEyes, floppyCap, hugTeddy, lapBlanket,
+    bubble, stopwatch, teddy, shutEyes, floppyCap, hugTeddy, lapBlanket,
   };
 }
 
@@ -360,26 +339,8 @@ function scenes() {
       p.G('class="bob"', [p.armL(), p.torso(), p.eyes(), p.stopwatch(), p.armR()]),
     ])
   );
-  // bedtime, part 1: walking (off to fetch his things, then back with them;
-  // the props are hidden on the way out)
-  out.push(`\n        <!-- bedtime: walking off, then back with nightcap, teddy and blanket -->`);
-  out.push(
-    svg('scene-bedwalk', '', [
-      p.G('class="legsA"', [p.leg(0), p.leg(2)]),
-      p.G('class="legsB"', [p.leg(1), p.leg(3)]),
-      p.G('class="torso"', [
-        p.armL(),
-        p.armR(),
-        p.torso(),
-        p.eyes(),
-        p.nightcap(),
-        p.teddy(1, 64),
-        p.blanketBundle(),
-      ]),
-    ])
-  );
-  // bedtime, part 2: sat down on his folded legs (the .settle groups start at
-  // standing height and step down), teddy hugged, blanket over his lap
+  // bedtime: sat down on his folded legs (the .settle groups start at standing
+  // height and step down), teddy hugged, blanket over his lap
   const s = P({ dx: 0, dy: SETTLE });
   out.push(`\n        <!-- bedtime: asleep, sat down on his folded legs under the blanket -->`);
   out.push(
@@ -391,67 +352,7 @@ function scenes() {
       s.G('class="settle"', [s.armL(), s.armR()]),
     ])
   );
-  // the props alone, where they sit while he sleeps: shown only while they
-  // drop off the screen when he is startled awake
-  out.push(`\n        <!-- bedtime: the props falling away when he wakes -->`);
-  out.push(
-    `        <svg id="scene-props" class="props" viewBox="0 0 100 100" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">\n          ${[
-      s.lapBlanket('drop-blanket'),
-      s.hugTeddy('drop-teddy'),
-      s.floppyCap('drop-cap'),
-    ].join('\n          ')}\n        </svg>`
-  );
   return out.join('\n');
-}
-
-// ------------------------------------------------------------ overlay sprites
-
-function sprites() {
-  const h = P({ dx: 10, dy: 20 }); // hang sprite: the widget drawing shifted by +10,+20
-  const w = P({ dx: 0, dy: 0 }); // walk sprite: 1:1 with the widget
-  const hang = [
-    `    <!-- hanging from the cursor by one arm (drag + fall) -->`,
-    `    <div id="hang" class="sprite" hidden>`,
-    `      <svg viewBox="0 0 150 120" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">`,
-    `        <!-- hard hat (working) -->`,
-    `        ${h.hardhat('acc acc-hat')}`,
-    `        <!-- wristwatch on the free arm (permission) -->`,
-    `        ${h.watchArm('acc acc-watch')}`,
-    `        <!-- plain free arm otherwise -->`,
-    `        ${h.armR('class="plain-arm"')}`,
-    `        <!-- body -->`,
-    `        ${h.torso()}`,
-    `        ${h.eyes()}`,
-    `        <!-- hammer raised in the free hand (working) -->`,
-    `        ${h.hammerUp('acc acc-pick')}`,
-    `        ${h.G('class="legs"', [h.leg(0), h.leg(1), h.leg(2), h.leg(3)])}`,
-    `        <!-- left arm lifted over his head, gripping at the cursor point (30,40) -->`,
-    `        ${rect(22, 40, 16, 16, C.side)}`,
-    `      </svg>`,
-    `    </div>`,
-  ];
-  const walk = [
-    `    <!-- upright, walking home -->`,
-    `    <div id="walk" class="sprite" hidden>`,
-    `      <svg viewBox="0 0 100 100" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">`,
-    `        ${w.G('class="legsA"', [w.leg(0), w.leg(2)])}`,
-    `        ${w.G('class="legsB"', [w.leg(1), w.leg(3)])}`,
-    `        <g class="torso">`,
-    `          ${w.armL('class="arm-left"')}`,
-    `          ${w.armR('class="arm-right"')}`,
-    `          <!-- watch arm (permission) -->`,
-    `          ${w.watchArm('acc acc-watch2')}`,
-    `          ${w.torso()}`,
-    `          ${w.eyes()}`,
-    `          <!-- hard hat (working) -->`,
-    `          ${w.hardhat('acc acc-hat2')}`,
-    `          <!-- hammer raised (working) -->`,
-    `          ${w.hammerUp('acc acc-pick2')}`,
-    `        </g>`,
-    `      </svg>`,
-    `    </div>`,
-  ];
-  return hang.join('\n') + '\n\n' + walk.join('\n');
 }
 
 // ------------------------------------------------------------ splice into the HTML
@@ -468,4 +369,3 @@ function splice(file, startMark, endMark, body) {
 }
 
 splice('index.html', '<!-- clawd-scenes:start -->', '        <!-- clawd-scenes:end -->', scenes());
-splice('overlay.html', '<!-- clawd-sprites:start -->', '    <!-- clawd-sprites:end -->', sprites());

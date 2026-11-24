@@ -8,33 +8,50 @@
 <body>
   <div id="root">
 
-    <!-- the menu, revealed on hover: an arch of glass. Its crown is the plan
-         usage gauge (one arc of the rim per limit, with its reading tucked
-         underneath), and the sessions hang below it, nearest the widget. -->
-    <div id="panel" role="group" aria-label="Sessions and plan usage">
-      <div id="gauge" class="gauge" hidden>
-        <svg id="arcs" class="arcs" viewBox="0 0 244 122" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"></svg>
-        <div id="readouts"></div>
+    <!-- Everything is placed in one square, in the coordinates of a lamp in the
+         bottom-right corner of the screen (see geometry.js); app.js mirrors it
+         for the other three corners. -->
+    <div id="space" class="state-off">
+
+      <!-- the tray, opened on hover: a quarter-disc carrying the usage tile,
+           the sessions card and the status pill -->
+      <div id="tray" role="group" aria-label="Sessions and plan usage" inert>
+        <div id="plate"></div>
+        <svg id="tiles" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+          <g id="tiles-g">
+            <path id="tile-usage"></path>
+            <path id="tile-card"></path>
+            <g id="gauges"></g>
+          </g>
+        </svg>
+        <div id="legend"></div>
+        <div id="uhint" hidden>Usage appears with Claude's next reply</div>
+        <div id="rows"></div>
+        <div id="more" hidden></div>
+        <div id="empty" hidden>Waiting for Claude Code</div>
+        <div id="pill">
+          <span id="pill-label"></span>
+          <span id="pill-time"></span>
+        </div>
       </div>
-      <div id="unote" class="unote" hidden></div>
-      <div id="rows" class="rows"></div>
-    </div>
 
-    <div id="widget" class="state-off">
+      <!-- at rest: how long the oldest waiting session has waited -->
+      <div id="wait" hidden></div>
 
-      <!-- traffic light -->
-      <div class="light">
-        <div id="wait-chip" class="wait-chip" hidden></div>
-        <div id="done-badge" class="done-badge" hidden></div>
-        <div class="lamp red"></div>
-        <div class="lamp yellow"></div>
-        <div class="lamp green"></div>
-      </div>
+      <!-- a wait that has turned urgent -->
+      <div id="pulse" aria-hidden="true"></div>
 
-      <!-- Clawd (pixel style). Every scene draws the same body in the same
-           place, so swapping scenes reads as one character changing pose
-           rather than two characters swapping. -->
-      <div class="clawd">
+      <!-- the lamp: a dot of the state's colour at rest; opened, a ring of
+           that colour round Clawd -->
+      <div id="lamp" role="img" aria-label="No Claude sessions">
+        <div class="bezel"></div>
+        <div class="glow"></div>
+        <svg class="orbit" aria-hidden="true" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg"><path d="M18 3.5 A14.5 14.5 0 0 1 32.5 18" fill="none" stroke-width="2.5" stroke-linecap="round"/></svg>
+
+        <!-- Clawd (pixel style). Every scene draws the same body in the same
+             place, so swapping scenes reads as one character changing pose
+             rather than two characters swapping. -->
+        <div class="clawd">
 
         <!-- clawd-scenes:start -->
         <!-- idle: plain Clawd, bobbing (frozen when no sessions).
@@ -91,13 +108,6 @@
           <g class="bob"><rect x="4" y="52" width="16" height="16" fill="#BF5F42"/><rect x="20" y="36" width="64" height="48" fill="#D97757"/><rect x="20" y="36" width="8" height="48" fill="#BF5F42"/><g class="eyes"><rect x="28" y="44" width="8" height="8" fill="#141414"/><rect x="68" y="44" width="8" height="8" fill="#141414"/></g><g class="stopwatch"><rect x="72" y="52" width="8" height="3" fill="#9CA3AD"/><rect x="74" y="55" width="4" height="3" fill="#6F7680"/><rect x="70" y="58" width="12" height="2" fill="#9CA3AD"/><rect x="67" y="60" width="18" height="2" fill="#9CA3AD"/><rect x="65" y="62" width="22" height="2" fill="#9CA3AD"/><rect x="64" y="64" width="24" height="12" fill="#9CA3AD"/><rect x="65" y="76" width="22" height="2" fill="#9CA3AD"/><rect x="67" y="78" width="18" height="2" fill="#9CA3AD"/><rect x="70" y="80" width="12" height="2" fill="#9CA3AD"/><rect x="70" y="60" width="12" height="2" fill="#F4F1EA"/><rect x="67" y="62" width="18" height="2" fill="#F4F1EA"/><rect x="66" y="64" width="20" height="12" fill="#F4F1EA"/><rect x="67" y="76" width="18" height="2" fill="#F4F1EA"/><rect x="70" y="78" width="12" height="2" fill="#F4F1EA"/><rect x="75" y="62" width="2" height="2" fill="#1F2933"/><rect x="83" y="69" width="2" height="2" fill="#1F2933"/><rect x="75" y="76" width="2" height="2" fill="#1F2933"/><rect x="67" y="69" width="2" height="2" fill="#1F2933"/><rect class="sw-hand" x="75" y="63" width="2" height="8" fill="#C9445B"/><rect x="75" y="69" width="2" height="2" fill="#1F2933"/></g><rect x="84" y="52" width="16" height="16" fill="#D97757"/></g>
         </svg>
 
-        <!-- bedtime: walking off, then back with nightcap, teddy and blanket -->
-        <svg id="scene-bedwalk" class="scene" viewBox="0 0 100 100" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">
-          <g class="legsA"><rect x="20" y="84" width="8" height="16" fill="#BF5F42"/><rect x="60" y="84" width="8" height="16" fill="#D97757"/></g>
-          <g class="legsB"><rect x="36" y="84" width="8" height="16" fill="#D97757"/><rect x="76" y="84" width="8" height="16" fill="#D97757"/></g>
-          <g class="torso"><rect x="4" y="52" width="16" height="16" fill="#BF5F42"/><rect x="84" y="52" width="16" height="16" fill="#D97757"/><rect x="20" y="36" width="64" height="48" fill="#D97757"/><rect x="20" y="36" width="8" height="48" fill="#BF5F42"/><g class="eyes"><rect x="28" y="44" width="8" height="8" fill="#141414"/><rect x="68" y="44" width="8" height="8" fill="#141414"/></g><g class="prop cap"><rect x="24" y="32" width="56" height="5" fill="#F4F1EA"/><rect x="28" y="23" width="46" height="9" fill="#C9445B"/><rect x="28" y="15" width="28" height="8" fill="#C9445B"/><rect x="26" y="9" width="14" height="6" fill="#C9445B"/><rect x="20" y="4" width="10" height="8" fill="#F4F1EA"/></g><g class="prop teddy"><rect x="2" y="64" width="4" height="4" fill="#A0714F"/><rect x="12" y="64" width="4" height="4" fill="#A0714F"/><rect x="3" y="67" width="12" height="9" fill="#A0714F"/><rect x="5" y="70" width="2" height="2" fill="#141414"/><rect x="11" y="70" width="2" height="2" fill="#141414"/><rect x="7" y="73" width="4" height="3" fill="#D9B38C"/><rect x="4" y="76" width="10" height="10" fill="#A0714F"/><rect x="1" y="78" width="3" height="6" fill="#A0714F"/><rect x="14" y="78" width="3" height="6" fill="#A0714F"/><rect x="4" y="86" width="4" height="4" fill="#A0714F"/><rect x="10" y="86" width="4" height="4" fill="#A0714F"/></g><g class="prop blanket"><rect x="84" y="66" width="18" height="16" fill="#6B8FD1"/><rect x="84" y="72" width="18" height="3" fill="#93B3EA"/><rect x="94" y="82" width="6" height="8" fill="#6B8FD1"/><rect x="96" y="90" width="4" height="6" fill="#6B8FD1"/></g></g>
-        </svg>
-
         <!-- bedtime: asleep, sat down on his folded legs under the blanket -->
         <svg id="scene-sleep" class="scene" viewBox="0 0 100 100" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">
           <rect x="20" y="84" width="8" height="16" fill="#BF5F42"/><rect x="36" y="84" width="8" height="16" fill="#D97757"/><rect x="60" y="84" width="8" height="16" fill="#D97757"/><rect x="76" y="84" width="8" height="16" fill="#D97757"/>
@@ -106,21 +116,20 @@
           <g class="prop blanket"><rect x="10" y="76" width="84" height="24" fill="#6B8FD1"/><rect x="10" y="76" width="84" height="3" fill="#93B3EA"/><rect x="10" y="86" width="84" height="2" fill="#93B3EA"/></g>
           <g class="settle"><rect x="4" y="68" width="16" height="16" fill="#BF5F42"/><rect x="84" y="68" width="16" height="16" fill="#D97757"/></g>
         </svg>
-
-        <!-- bedtime: the props falling away when he wakes -->
-        <svg id="scene-props" class="props" viewBox="0 0 100 100" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">
-          <g class="drop-blanket"><rect x="10" y="76" width="84" height="24" fill="#6B8FD1"/><rect x="10" y="76" width="84" height="3" fill="#93B3EA"/><rect x="10" y="86" width="84" height="2" fill="#93B3EA"/></g>
-          <g class="drop-teddy"><rect x="45" y="54" width="4" height="4" fill="#A0714F"/><rect x="55" y="54" width="4" height="4" fill="#A0714F"/><rect x="46" y="57" width="12" height="9" fill="#A0714F"/><rect x="48" y="60" width="2" height="2" fill="#141414"/><rect x="54" y="60" width="2" height="2" fill="#141414"/><rect x="50" y="63" width="4" height="3" fill="#D9B38C"/><rect x="47" y="66" width="10" height="10" fill="#A0714F"/><rect x="44" y="68" width="3" height="6" fill="#A0714F"/><rect x="57" y="68" width="3" height="6" fill="#A0714F"/><rect x="47" y="76" width="4" height="4" fill="#A0714F"/><rect x="53" y="76" width="4" height="4" fill="#A0714F"/></g>
-          <g class="drop-cap"><rect x="24" y="48" width="56" height="5" fill="#F4F1EA"/><rect x="28" y="39" width="46" height="9" fill="#C9445B"/><rect x="16" y="33" width="40" height="8" fill="#C9445B"/><rect x="8" y="35" width="10" height="10" fill="#C9445B"/><rect x="4" y="43" width="10" height="8" fill="#F4F1EA"/></g>
-        </svg>
         <!-- clawd-scenes:end -->
 
-        <!-- dozing: shown while green for a while -->
-        <div class="zzz" aria-hidden="true"><span>z</span><span>z</span><span>z</span></div>
-
+        </div>
       </div>
+
+      <!-- dozing: rises off the lamp while he sleeps -->
+      <div class="zzz" aria-hidden="true"><span>z</span><span>z</span><span>z</span></div>
+
+      <!-- turns that finished since you last looked -->
+      <div id="badge" hidden></div>
+
     </div>
   </div>
+  <script src="geometry.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

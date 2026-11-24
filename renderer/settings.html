@@ -12,21 +12,21 @@
       <div class="row">
         <label for="size">Size</label>
         <span class="grow"></span>
-        <input type="range" id="size" min="50" max="200" step="10">
+        <input type="range" id="size" min="70" max="150" step="5">
         <output id="sizeVal" for="size" class="val">100%</output>
       </div>
       <label class="row check">
         <input type="checkbox" id="dim">
         <span class="text">
           <span>Dim when idle</span>
-          <small>Fades the widget while the light is green or no sessions are running.</small>
+          <small>Fades the lamp while it is green or no sessions are running.</small>
         </span>
       </label>
       <label class="row check">
         <input type="checkbox" id="ghost">
         <span class="text">
           <span>Click through when idle</span>
-          <small>Clicks pass to the windows beneath. Use the tray icon to reach the widget while the light is green.</small>
+          <small>Clicks pass to the windows beneath. Use the tray icon to reach the widget while the lamp is green.</small>
         </span>
       </label>
     </section>
@@ -49,6 +49,17 @@
       <label class="row check">
         <input type="checkbox" id="notifySound">
         <span class="text"><span>Play the notification sound</span></span>
+      </label>
+    </section>
+
+    <h2 id="g-usage">Plan usage</h2>
+    <section aria-labelledby="g-usage">
+      <label class="row check">
+        <input type="checkbox" id="statusLine" aria-describedby="statusLineNote">
+        <span class="text">
+          <span>Read usage from Claude Code's status line</span>
+          <small id="statusLineNote">Claude Code hands its status line command the 5-hour and weekly figures with every reply. Clawd registers a silent one to receive them.</small>
+        </span>
       </label>
     </section>
 

@@ -1,9 +1,13 @@
 const { app, BrowserWindow, Tray, Menu, Notification, nativeImage, nativeTheme, screen, dialog, shell, ipcMain } = require('electron');
 const { spawn } = require('child_process');
+const crypto = require('crypto');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const G = require('./renderer/geometry.js'); // the opened widget's shape, shared with the page
+const usageLib = require('./lib/usage');
+const statusline = require('./lib/statusline');
 
 // Software rendering: drops the GPU process / shared textures, a big chunk of
 // the app's memory footprint. Plenty for a tiny widget with CSS animations.
@@ -14,31 +18,37 @@ app.disableHardwareAcceleration();
 const APP_ID = 'com.alexyang.claude-stoplight';
 if (process.platform === 'win32') app.setAppUserModelId(app.isPackaged ? APP_ID : process.execPath);
 
-const DATA_DIR = path.join(os.homedir(), '.claude-stoplight');
+// CLAWD_DATA_DIR moves the widget's own files, for running a second copy
+// under test. Claude Code keeps its files under CLAUDE_CONFIG_DIR when that is
+// set, so the widget looks there too.
+const DATA_DIR = process.env.CLAWD_DATA_DIR || path.join(os.homedir(), '.claude-stoplight');
 const CONFIG_PATH = path.join(DATA_DIR, 'config.json');
 const STATE_PATH = path.join(DATA_DIR, 'state.json');
-const CLAUDE_DIR = path.join(os.homedir(), '.claude');
+const CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
 const CLAUDE_SETTINGS = path.join(CLAUDE_DIR, 'settings.json');
 
+// CLAWD_SMOKE=<folder>: play a scripted session at ourselves, save what the
+// widget showed there, and exit (lib/smoke.js). For checking a build unattended.
+const SMOKE = process.env.CLAWD_SMOKE || '';
+
 const MARKER = 'claude-stoplight/event'; // identifies our hook entries inside settings.json
-const BASE_W = 264; // widget design size in CSS px, before zoom
-const BASE_H = 124;
-const BASE_ZOOM = 0.7;
-// The window is permanently tall enough for the session panel (which fades in
-// above the widget), so it never has to resize — resizes can't animate
-// smoothly on Windows. The extra space is fully transparent, and transparent
-// pixels pass mouse events through, so it obstructs nothing.
-const PANEL_MAX = 426; // panel max-height + margin, in CSS px before zoom
+// The window is a square with room for the opened tray, and never resizes:
+// resizes can't animate smoothly on Windows. At rest all of it but the lamp
+// is fully transparent, and transparent pixels pass mouse events through, so
+// it obstructs nothing.
+const SIZE_MIN = 70; // widget scale, % (below this the tray's text is too small to read)
+const SIZE_MAX = 150;
 
 const DEFAULTS = {
   port: 47615,
-  sizePct: 100, // widget scale, 50–200 (%)
+  sizePct: 100, // widget scale, SIZE_MIN–SIZE_MAX (%)
   pruneHours: 6, // drop sessions silent this long (terminal killed without SessionEnd)
   dimIdle: false, // fade the widget when green / no sessions
   clickThroughIdle: false, // let clicks pass through the widget when green / no sessions
   notify: true, // a Windows notification when a session has waited on the user notifyAfterSec
   notifyAfterSec: 30,
   notifySound: false, // play the Windows notification sound with it
+  statusLine: true, // read plan usage from Claude Code's status line (see lib/statusline.js)
 };
 
 // Hook events we subscribe to. The tool events take a tool matcher. The tool
@@ -96,22 +106,13 @@ const PROCESS_LIST_STALE_MS = 5 * 60 * 1000;
 const DOCK_TOL = 12;
 const DOCK_MIGRATE_TOL = 64; // once, for positions saved before docking existed
 
-// Plan usage (the same numbers as Claude Code's /usage): read with the
-// Claude Code OAuth token from ~/.claude/.credentials.json, which Claude Code
-// itself keeps fresh. Polled slowly in the background and again on hover when
-// the last reading is older than USAGE_HOVER_MAX_AGE_MS.
+// Plan usage (the same numbers as Claude Code's /usage). Where the figures
+// come from, and how seldom the endpoint is asked, is lib/usage.js.
 const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage';
 const CLAUDE_CREDENTIALS = path.join(CLAUDE_DIR, '.credentials.json');
-const USAGE_POLL_MS = 3 * 60 * 1000;
-const USAGE_HOVER_MAX_AGE_MS = 45 * 1000;
+const USAGE_PATH = path.join(DATA_DIR, 'usage.json');
+const USAGE_TIMER_MS = 10 * 60 * 1000;
 const USAGE_TIMEOUT_MS = 10 * 1000;
-// After a failed request nothing is sent for a while, however often the timer
-// fires or the widget is hovered: a minute at first, doubling each time the
-// server refuses again (a 429 is the endpoint rate limiting us), and never
-// less than the Retry-After it asks for.
-const USAGE_BACKOFF_MS = 60 * 1000;
-const USAGE_BACKOFF_MAX_MS = 30 * 60 * 1000;
-const USAGE_RETRY_AFTER_MAX_MS = 60 * 60 * 1000;
 
 // A turn that ran at least this long earns Clawd a celebratory hop when it ends.
 const LONG_TURN_MS = 60 * 1000;
@@ -119,8 +120,6 @@ const LONG_TURN_MS = 60 * 1000;
 const SEEN_MS = 800;
 // Longest description of a tool call or background task kept for display.
 const DETAIL_MAX = 120;
-// Never let an escapade keep Clawd away from the widget longer than this.
-const ESCAPADE_GUARD_MS = 45 * 1000;
 
 let win = null;
 let ownerWin = null; // invisible owner window, see createWindow
@@ -146,7 +145,8 @@ const reaped = new Map();
 
 function readJson(file) {
   try {
-    return JSON.parse(fs.readFileSync(file, 'utf8'));
+    // (some Windows editors save UTF-8 with a byte-order mark, which JSON.parse refuses)
+    return JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
   } catch {
     return null;
   }
@@ -165,9 +165,10 @@ function clampInt(v, lo, hi, dflt) {
 function loadConfig() {
   config = Object.assign({}, DEFAULTS, readJson(CONFIG_PATH) || {});
   config.port = clampInt(config.port, 1024, 65535, DEFAULTS.port);
-  config.sizePct = clampInt(config.sizePct, 50, 200, DEFAULTS.sizePct);
+  config.sizePct = clampInt(config.sizePct, SIZE_MIN, SIZE_MAX, DEFAULTS.sizePct);
   config.pruneHours = clampInt(config.pruneHours, 1, 168, DEFAULTS.pruneHours);
   config.notifyAfterSec = clampInt(config.notifyAfterSec, 0, 3600, DEFAULTS.notifyAfterSec);
+  config.statusLine = config.statusLine !== false;
 }
 
 function saveConfig() {
@@ -176,22 +177,14 @@ function saveConfig() {
   } catch {}
 }
 
-function zoomFactor() {
-  return BASE_ZOOM * (config.sizePct / 100);
+// design units (see renderer/geometry.js) to screen px
+function scale() {
+  return config.sizePct / 100;
 }
 
-function winW() {
-  return Math.round(BASE_W * zoomFactor());
-}
-
-function winH() {
-  // height of the visible widget base area (bottom of the window)
-  return Math.round(BASE_H * zoomFactor());
-}
-
-function fullH() {
-  // actual window height, including the transparent panel space above
-  return Math.round((BASE_H + PANEL_MAX) * zoomFactor());
+// the window's side
+function winSize() {
+  return Math.round(G.WINDOW * scale());
 }
 
 function loadSessions() {
@@ -537,6 +530,7 @@ function handleEvent(event, payload) {
         unreadAt: !current || current.state !== 'ready' ? now : current.unreadAt || null,
       });
       if (longTurn) react('done');
+      refreshUsage('stop'); // the turn has moved the figures only the endpoint has
       break;
     }
     case 'SessionEnd':
@@ -581,8 +575,10 @@ function salvagePayload(text) {
 
 function startServer() {
   server = http.createServer((req, res) => {
-    const match = /^\/claude-stoplight\/event\/([A-Za-z]+)$/.exec(req.url || '');
-    if (!match || req.method !== 'POST') {
+    const url = req.url || '';
+    const match = /^\/claude-stoplight\/event\/([A-Za-z]+)$/.exec(url);
+    const fromStatusLine = url === statusline.ROUTE;
+    if ((!match && !fromStatusLine) || req.method !== 'POST') {
       res.statusCode = 404;
       res.end();
       return;
@@ -606,6 +602,15 @@ function startServer() {
           payload = JSON.parse(body);
         } catch {}
       }
+      if (fromStatusLine) {
+        // the status line command prints whatever comes back, so nothing does
+        try {
+          if (payload && typeof payload === 'object') handleStatusLine(payload);
+        } catch {}
+        res.statusCode = 204;
+        res.end();
+        return;
+      }
       if (!payload || typeof payload !== 'object') payload = salvagePayload(body);
       try {
         handleEvent(match[1], payload);
@@ -622,6 +627,8 @@ function startServer() {
         `Port ${config.port} is already in use, so hook events can't be received.\n` +
           `Pick a different port in Settings (tray menu) and hooks will be reinstalled automatically.`
       );
+    } else {
+      livenessLog(`server error: ${err && err.message}`);
     }
   });
   server.listen(config.port, '127.0.0.1');
@@ -1023,6 +1030,13 @@ function hooksComplete() {
   });
 }
 
+// a timestamped copy beside settings.json, before each change we make to it
+function backupClaudeSettings() {
+  try {
+    fs.copyFileSync(CLAUDE_SETTINGS, `${CLAUDE_SETTINGS}.backup-stoplight-${Date.now()}`);
+  } catch {}
+}
+
 function installHooks(interactive) {
   let settings = {};
   if (fs.existsSync(CLAUDE_SETTINGS)) {
@@ -1035,10 +1049,7 @@ function installHooks(interactive) {
       );
       return false;
     }
-    const backup = `${CLAUDE_SETTINGS}.backup-stoplight-${Date.now()}`;
-    try {
-      fs.copyFileSync(CLAUDE_SETTINGS, backup);
-    } catch {}
+    backupClaudeSettings();
   }
   settings.hooks = settings.hooks || {};
   for (const spec of HOOK_EVENTS) {
@@ -1058,7 +1069,7 @@ function installHooks(interactive) {
       title: 'Clawd',
       message: 'Claude Code hooks installed.',
       detail:
-        'Claude Code sessions will now report their status to the stoplight. ' +
+        'Claude Code sessions will now report their status to the widget. ' +
         'Sessions already running normally pick the new hooks up by themselves; restart one if it does not.',
     });
   }
@@ -1084,7 +1095,7 @@ function removeHooks(interactive) {
       type: 'info',
       title: 'Clawd',
       message: 'Claude Code hooks removed.',
-      detail: 'Claude Code will no longer report anything to the stoplight.',
+      detail: 'Claude Code will no longer report anything to the widget.',
     });
   }
 }
@@ -1098,126 +1109,204 @@ function iconImage() {
   return nativeImage.createFromPath(path.join(__dirname, 'build', 'icon.ico'));
 }
 
-// Clamp the window so the visible widget (its bottom winH() slice) stays fully
-// inside the nearest display's work area. The transparent panel space above may
-// hang off the top of the screen — nothing visible lives there when collapsed.
-function clampPos(x, y, w, h) {
-  const baseH = winH();
-  const a = screen.getDisplayMatching({ x, y: y + h - baseH, width: w, height: baseH }).workArea;
+// The lamp sits in whichever corner of the window is nearest the screen's, and
+// the tray opens away from that corner. What is remembered is the lamp, not
+// the window: config.lamp is its centre on screen, config.corner is which
+// quarter of its display it is in ('br', 'bl', 'tr', 'tl': the window's corner
+// that holds it), and config.dock records which screen edges the window was
+// left against, so it keeps hugging them when the work area changes (taskbar
+// set to auto-hide, resized, moved...).
+let corner = 'br';
+
+// the lamp's centre, from the window's top-left
+function lampOffset(c) {
+  const s = winSize();
+  const inset = Math.round(G.LAMP_INSET * scale());
+  return { x: c[1] === 'l' ? inset : s - inset, y: c[0] === 't' ? inset : s - inset };
+}
+
+function windowAt(lamp, c) {
+  const o = lampOffset(c);
+  return { x: Math.round(lamp.x - o.x), y: Math.round(lamp.y - o.y) };
+}
+
+function lampAt(pos, c) {
+  const o = lampOffset(c);
+  return { x: pos.x + o.x, y: pos.y + o.y };
+}
+
+function workAreaAt(point) {
+  return screen.getDisplayNearestPoint({ x: Math.round(point.x), y: Math.round(point.y) }).workArea;
+}
+
+// Which quarter of its display the lamp is in. A docked edge decides its own
+// axis, so a window against the right edge always opens to the left.
+function cornerFor(lamp, dock) {
+  const a = workAreaAt(lamp);
+  const d = dock || {};
+  const v = Boolean(d.top) !== Boolean(d.bottom) ? (d.top ? 't' : 'b') : lamp.y < a.y + a.height / 2 ? 't' : 'b';
+  const h = Boolean(d.left) !== Boolean(d.right) ? (d.left ? 'l' : 'r') : lamp.x < a.x + a.width / 2 ? 'l' : 'r';
+  return v + h;
+}
+
+// keep the whole window inside a work area
+function clampTo(a, p) {
+  const s = winSize();
   return {
-    x: Math.min(Math.max(x, a.x), a.x + a.width - w),
-    y: Math.min(Math.max(y, a.y + baseH - h), a.y + a.height - h),
+    x: Math.round(Math.min(Math.max(p.x, a.x), Math.max(a.x, a.x + a.width - s))),
+    y: Math.round(Math.min(Math.max(p.y, a.y), Math.max(a.y, a.y + a.height - s))),
   };
 }
 
-// Work area of the display the visible widget base (bottom winH() slice of a
-// window at x,y with size w,h) mostly lies on.
-function workAreaFor(x, y, w, h) {
-  const baseH = winH();
-  return screen.getDisplayMatching({ x, y: y + h - baseH, width: w, height: baseH }).workArea;
-}
-
-// Which work-area edges the visible widget touches at this window position.
-function dockFor(x, y, w, h, tol) {
-  const a = workAreaFor(x, y, w, h);
-  const baseTop = y + h - winH();
+// Which work-area edges a rectangle touches.
+function dockOf(a, r, tol) {
   return {
-    left: Math.abs(x - a.x) <= tol,
-    right: Math.abs(x + w - (a.x + a.width)) <= tol,
-    top: Math.abs(baseTop - a.y) <= tol,
-    bottom: Math.abs(y + h - (a.y + a.height)) <= tol,
+    left: Math.abs(r.x - a.x) <= tol,
+    right: Math.abs(r.x + r.width - (a.x + a.width)) <= tol,
+    top: Math.abs(r.y - a.y) <= tol,
+    bottom: Math.abs(r.y + r.height - (a.y + a.height)) <= tol,
   };
 }
 
-// Snap the docked edges to the current work area, then clamp.
-function applyDock(x, y, w, h, dock) {
+function dockFor(a, p, tol) {
+  const s = winSize();
+  return dockOf(a, { x: p.x, y: p.y, width: s, height: s }, tol);
+}
+
+// Snap the docked edges to the work area, then clamp.
+function applyDock(a, p, dock) {
+  const s = winSize();
+  let { x, y } = p;
   if (dock) {
-    const a = workAreaFor(x, y, w, h);
     if (dock.left) x = a.x;
-    if (dock.right) x = a.x + a.width - w;
-    if (dock.top) y = a.y + winH() - h;
-    if (dock.bottom) y = a.y + a.height - h;
+    if (dock.right) x = a.x + a.width - s;
+    if (dock.top) y = a.y;
+    if (dock.bottom) y = a.y + a.height - s;
   }
-  return clampPos(x, y, w, h);
+  return clampTo(a, { x, y });
 }
 
-function isDocked(dock) {
-  return Boolean(dock && (dock.left || dock.right || dock.top || dock.bottom));
+// Where the window goes for a lamp at this point.
+function place(lamp, dock) {
+  const a = workAreaAt(lamp);
+  const c = cornerFor(lamp, dock);
+  return { pos: applyDock(a, windowAt(lamp, c), dock), corner: c };
 }
 
-// config.x/y store the top-left of the visible widget base area (which is what
-// pre-1.2.3 versions stored as the whole window position, so old configs load
-// unchanged); the window top sits fullH()-winH() above it. config.dock records
-// which screen edges the widget was left against, so it keeps hugging them
-// when the work area changes (taskbar set to auto-hide, resized, moved...).
-function restorePosition() {
+function defaultLamp() {
+  const a = screen.getPrimaryDisplay().workArea;
+  const s = winSize();
+  config.dock = { left: false, right: true, top: false, bottom: true };
+  return lampAt({ x: a.x + a.width - s, y: a.y + a.height - s }, 'br');
+}
+
+// Versions up to 1.3 stored config.x/y: the top-left of a 264 x 124 widget
+// drawn at 70%. The lamp goes to the corner of that rectangle nearest the
+// screen's, so the widget stays where it was put.
+function migrateLamp() {
   const { x, y } = config;
-  if (typeof x !== 'number' || typeof y !== 'number') return defaultPosition();
-  const w = winW();
-  const h = fullH();
-  const wy = y + winH() - h;
-  if (!config.dock) {
-    // a position saved before docking existed: a widget left near an edge was
-    // meant to sit on it (typically on top of a taskbar that has since been hidden)
-    config.dock = dockFor(x, wy, w, h, DOCK_MIGRATE_TOL);
+  if (typeof x !== 'number' || typeof y !== 'number') return null;
+  const k = 0.7 * scale();
+  const old = { x, y, width: Math.round(264 * k), height: Math.round(124 * k) };
+  const centre = { x: old.x + old.width / 2, y: old.y + old.height / 2 };
+  // a position saved before docking existed: a widget left near an edge was
+  // meant to sit on it (typically on top of a taskbar that has since been hidden)
+  if (!config.dock) config.dock = dockOf(workAreaAt(centre), old, DOCK_MIGRATE_TOL);
+  const c = cornerFor(centre, config.dock);
+  const s = winSize();
+  const pos = { x: c[1] === 'l' ? old.x : old.x + old.width - s, y: c[0] === 't' ? old.y : old.y + old.height - s };
+  delete config.x;
+  delete config.y;
+  return lampAt(pos, c);
+}
+
+function validPoint(p) {
+  return Boolean(p && Number.isFinite(p.x) && Number.isFinite(p.y));
+}
+
+// The window's position from config; sets `corner` to match.
+function restorePosition() {
+  if (!validPoint(config.lamp)) {
+    config.lamp = migrateLamp() || defaultLamp();
     saveConfig();
   }
-  return applyDock(x, wy, w, h, config.dock);
+  const p = place(config.lamp, config.dock);
+  corner = p.corner;
+  return p.pos;
 }
 
-function defaultPosition() {
-  const a = screen.getPrimaryDisplay().workArea;
-  config.dock = { left: false, right: true, top: false, bottom: true };
-  return { x: a.x + a.width - winW(), y: a.y + a.height - fullH() };
+let suppressMoveSave = false;
+
+function moveWindow(pos) {
+  if (!win || win.isDestroyed()) return;
+  const b = win.getBounds();
+  const s = winSize();
+  if (pos.x === b.x && pos.y === b.y && b.width === s && b.height === s) return;
+  suppressMoveSave = true;
+  win.setBounds({ x: pos.x, y: pos.y, width: s, height: s });
+  setTimeout(() => {
+    suppressMoveSave = false;
+  }, 250);
 }
 
 // Re-place the window from config (used when displays or work areas change).
+// config.lamp is left as it is: a display that was unplugged may come back.
 let placeTimer = null;
 function replaceWindow() {
   clearTimeout(placeTimer);
   placeTimer = setTimeout(() => {
     if (!win || win.isDestroyed()) return;
-    const b = win.getBounds();
-    const p = restorePosition();
-    if (p.x === b.x && p.y === b.y) return;
-    suppressMoveSave = true;
-    win.setBounds({ x: p.x, y: p.y, width: b.width, height: b.height });
-    setTimeout(() => {
-      suppressMoveSave = false;
-    }, 250);
+    const was = corner;
+    moveWindow(restorePosition());
+    if (corner !== was) sendConfigToWidget();
   }, 150);
+}
+
+// The window has been dragged somewhere. Bring it back on screen if part of
+// it was dragged off an edge, and if the lamp has crossed into another
+// quarter of its display, turn the tray to open the other way from the same
+// spot. Then remember where the lamp is.
+function settleWindow() {
+  if (!win || win.isDestroyed()) return;
+  const b = win.getBounds();
+  const a = workAreaAt(lampAt(b, corner));
+  let pos = clampTo(a, b);
+  let lamp = lampAt(pos, corner);
+  const next = cornerFor(lamp, null);
+  if (next !== corner) {
+    corner = next;
+    pos = clampTo(a, windowAt(lamp, corner));
+    lamp = lampAt(pos, corner);
+  }
+  config.lamp = lamp;
+  config.corner = corner;
+  config.dock = dockFor(a, pos, DOCK_TOL);
+  saveConfig();
+  moveWindow(pos);
+  sendConfigToWidget();
 }
 
 function sendConfigToWidget() {
   if (win && !win.isDestroyed()) {
     win.webContents.send('config', {
-      zoom: zoomFactor(),
+      scale: scale(),
       dimIdle: !!config.dimIdle,
       clickThroughIdle: !!config.clickThroughIdle,
+      corner,
     });
   }
 }
 
-let suppressMoveSave = false;
-// how much of the window (from the bottom) is currently "live" for hover:
-// the base widget, plus the session panel while the renderer shows it
-let hoverH = 0;
-
+// The size setting changed: the lamp stays where it is (docked edges stay
+// docked) and the window is resized around it.
 function applyWidgetSize() {
   if (!win || win.isDestroyed()) return;
-  const b = win.getBounds();
-  const w = winW();
-  const h = fullH();
-  // keep the bottom-right corner where the user put it (docked edges stay docked)
-  const { x, y } = applyDock(b.x + b.width - w, b.y + b.height - h, w, h, config.dock);
-  suppressMoveSave = true;
-  win.setBounds({ x, y, width: w, height: h });
-  setTimeout(() => {
-    suppressMoveSave = false;
-  }, 250);
-  config.x = x;
-  config.y = y + h - winH();
+  const p = place(config.lamp, config.dock);
+  corner = p.corner;
+  config.lamp = lampAt(p.pos, corner);
+  config.corner = corner;
   saveConfig();
+  moveWindow(p.pos);
 }
 
 function createWindow() {
@@ -1235,8 +1324,8 @@ function createWindow() {
   const pos = restorePosition();
   win = new BrowserWindow({
     parent: ownerWin,
-    width: winW(),
-    height: fullH(),
+    width: winSize(),
+    height: winSize(),
     x: pos.x,
     y: pos.y,
     frame: false,
@@ -1271,25 +1360,15 @@ function createWindow() {
   win.on('moved', () => {
     if (suppressMoveSave) return;
     clearTimeout(moveTimer);
-    moveTimer = setTimeout(() => {
-      if (!win || win.isDestroyed()) return;
-      const b = win.getBounds();
-      // snap back on screen if part of the widget was dragged off an edge
-      const c = clampPos(b.x, b.y, b.width, b.height);
-      if (c.x !== b.x || c.y !== b.y) {
-        suppressMoveSave = true;
-        win.setBounds({ x: c.x, y: c.y, width: b.width, height: b.height });
-        setTimeout(() => {
-          suppressMoveSave = false;
-        }, 250);
-      }
-      config.x = c.x;
-      config.y = c.y + b.height - winH();
-      config.dock = dockFor(c.x, c.y, b.width, b.height, DOCK_TOL);
-      saveConfig();
-    }, 300);
+    moveTimer = setTimeout(settleWindow, 300);
   });
+  // The page's own right-click, and the system menu Windows would otherwise
+  // show for a right-click on the parts the widget is dragged by.
   win.webContents.on('context-menu', () => {
+    buildMenu().popup({ window: win });
+  });
+  win.on('system-context-menu', (event) => {
+    event.preventDefault();
     buildMenu().popup({ window: win });
   });
   win.on('closed', () => {
@@ -1308,7 +1387,7 @@ function openSettings() {
   settingsWin = new BrowserWindow({
     parent: ownerWin,
     width: 430,
-    height: 684,
+    height: 760,
     // the page's own background (settings.css follows the system appearance),
     // so the window never flashes white before the page paints
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#1b1c1f' : '#f2f2f7',
@@ -1341,18 +1420,24 @@ function applySettings(next) {
   const prevPort = config.port;
   const prevPct = config.sizePct;
   config.port = clampInt(next.port, 1024, 65535, DEFAULTS.port);
-  config.sizePct = clampInt(next.sizePct, 50, 200, DEFAULTS.sizePct);
+  const prevStatusLine = config.statusLine;
+  config.sizePct = clampInt(next.sizePct, SIZE_MIN, SIZE_MAX, DEFAULTS.sizePct);
   config.pruneHours = clampInt(next.pruneHours, 1, 168, DEFAULTS.pruneHours);
+  config.statusLine = next.statusLine !== false;
   config.dimIdle = !!next.dimIdle;
   config.clickThroughIdle = !!next.clickThroughIdle;
   config.notify = !!next.notify;
   config.notifyAfterSec = clampInt(next.notifyAfterSec, 0, 3600, DEFAULTS.notifyAfterSec);
   config.notifySound = !!next.notifySound;
   saveConfig();
-  if (config.port !== prevPort) {
+  const portChanged = config.port !== prevPort;
+  if (portChanged) {
     restartServer();
     if (hooksInstalled()) installHooks(false); // hooks embed the port in their URL
   }
+  // so does the status line command
+  if (!config.statusLine && prevStatusLine) removeStatusLine();
+  else if (config.statusLine && hooksInstalled() && (portChanged || !prevStatusLine)) installStatusLine();
   if (config.sizePct !== prevPct) applyWidgetSize();
   sendConfigToWidget();
   pushState();
@@ -1362,8 +1447,7 @@ function applySettings(next) {
 
 // Best effort: find a window whose title mentions the session's project folder
 // (Windows Terminal shows the active tab's title; VS Code titles include the
-// workspace folder), bring it to the foreground, and report where it is so
-// Clawd can run over and knock.
+// workspace folder) and bring it to the foreground.
 //
 // The folder name reaches the script through an environment variable and is
 // never written into its text: it comes from hook payloads, and PowerShell
@@ -1375,11 +1459,9 @@ const FOCUS_SCRIPT =
   `$n = $n.ToLower()\n` +
   `$p = Get-Process | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero -and $_.MainWindowTitle -and $_.MainWindowTitle.ToLower().Contains($n) } | Select-Object -First 1\n` +
   `if ($p) {\n` +
-  `  Add-Type -Namespace SL -Name U32 -MemberDefinition '[StructLayout(LayoutKind.Sequential)] public struct RECT { public int L; public int T; public int R; public int B; } [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c); [DllImport("user32.dll")] public static extern void SwitchToThisWindow(IntPtr h, bool alt); [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);'\n` +
+  `  Add-Type -Namespace SL -Name U32 -MemberDefinition '[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c); [DllImport("user32.dll")] public static extern void SwitchToThisWindow(IntPtr h, bool alt);'\n` +
   `  [SL.U32]::ShowWindow($p.MainWindowHandle, 9) | Out-Null\n` +
   `  [SL.U32]::SwitchToThisWindow($p.MainWindowHandle, $true)\n` +
-  `  $r = New-Object SL.U32+RECT\n` +
-  `  if ([SL.U32]::GetWindowRect($p.MainWindowHandle, [ref]$r)) { Write-Output "RECT $($r.L),$($r.T),$($r.R),$($r.B)" }\n` +
   `}\n`;
 const FOCUS_SCRIPT_ENC = Buffer.from(FOCUS_SCRIPT, 'utf16le').toString('base64');
 
@@ -1393,18 +1475,10 @@ function focusSessionTerminal(id) {
       ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-EncodedCommand', FOCUS_SCRIPT_ENC],
       {
         windowsHide: true,
-        stdio: ['ignore', 'pipe', 'ignore'],
+        stdio: 'ignore',
         env: Object.assign({}, process.env, { [FOCUS_NAME_VAR]: base }),
       }
     );
-    let out = '';
-    child.stdout.on('data', (chunk) => {
-      out += chunk;
-    });
-    child.on('close', () => {
-      const m = /RECT (-?\d+),(-?\d+),(-?\d+),(-?\d+)/.exec(out);
-      if (m) beginVisit({ left: +m[1], top: +m[2], right: +m[3], bottom: +m[4] });
-    });
     child.on('error', () => {});
   } catch {}
 }
@@ -1460,132 +1534,272 @@ function showToast(id, s) {
 
 // ---------------------------------------------------------------- plan usage
 
-// { bars: [{ key, label, percent, resetsAt, severity }], fetchedAt, error }
-let usage = { bars: [], fetchedAt: 0, error: null };
+// The figures and the bookkeeping of when the endpoint may be asked again;
+// lib/usage.js explains the two sources and makes every decision.
+let usageState = usageLib.createState();
 let usageBusy = false;
-let usageFails = 0; // failed requests in a row
-let usageRetryAt = 0; // no request is sent before this
-let usageToken = null; // the sign-in token the last request used
+let usageSaveTimer = null;
 
-// Retry-After is a number of seconds or an HTTP date.
-function retryAfterMs(value, now) {
-  if (!value) return 0;
-  const secs = Number(value);
-  const ms = Number.isFinite(secs) ? secs * 1000 : Date.parse(value) - now;
-  return Number.isFinite(ms) && ms > 0 ? Math.min(ms, USAGE_RETRY_AFTER_MAX_MS) : 0;
+function loadUsage() {
+  usageState = usageLib.restore(readJson(USAGE_PATH), Date.now());
 }
 
-// How long to stay quiet after the nth failure in a row. Only a refusal from
-// the server lengthens the wait: a dropped connection or a timeout says
-// nothing about the next attempt, and the figures should come back promptly
-// once the network does.
-function usageBackoffMs(fails, refused, retryAfter) {
-  const wait = refused ? Math.min(USAGE_BACKOFF_MAX_MS, USAGE_BACKOFF_MS * 2 ** (fails - 1)) : USAGE_BACKOFF_MS;
-  return Math.max(wait, retryAfter || 0);
-}
-
-function readAccessToken() {
-  const j = readJson(CLAUDE_CREDENTIALS);
-  const o = j && j.claudeAiOauth;
-  return o && typeof o.accessToken === 'string' && o.accessToken ? o.accessToken : null;
-}
-
-function pct(v) {
-  const n = Number(v);
-  return Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : null;
-}
-
-// The three bars: the 5-hour session window, the weekly all-models window, and
-// the weekly window scoped to the top model (named by the API, e.g. "Fable").
-function usageBars(d) {
-  const limits = Array.isArray(d.limits) ? d.limits : [];
-  const bar = (key, label, l, fallback) => {
-    const percent = l ? pct(l.percent) : fallback ? pct(fallback.utilization) : null;
-    if (percent === null) return null;
-    const resetsAt = Date.parse((l && l.resets_at) || (fallback && fallback.resets_at) || '') || null;
-    return { key, label, percent, resetsAt, severity: (l && l.severity) || null };
-  };
-  const scoped = limits.find((l) => l.kind === 'weekly_scoped' && l.scope && l.scope.model);
-  const scopedName = (scoped && scoped.scope.model.display_name) || 'Fable';
-  return [
-    bar('session', '5-hour', limits.find((l) => l.kind === 'session'), d.five_hour),
-    bar('weekly', 'Weekly', limits.find((l) => l.kind === 'weekly_all'), d.seven_day),
-    bar('model', scopedName, scoped, d.seven_day_opus),
-  ].filter(Boolean);
+function saveUsage() {
+  clearTimeout(usageSaveTimer);
+  usageSaveTimer = setTimeout(() => {
+    try {
+      writeJson(USAGE_PATH, usageLib.serialize(usageState));
+    } catch {}
+  }, 500);
 }
 
 function pushUsage() {
-  if (win && !win.isDestroyed()) win.webContents.send('usage', usage);
+  if (win && !win.isDestroyed()) win.webContents.send('usage', usageLib.snapshot(usageState, Date.now()));
 }
 
-function pollUsage() {
-  if (usageBusy) return;
-  const token = readAccessToken();
-  if (!token) {
-    usage = Object.assign({}, usage, { error: 'not signed in to Claude Code' });
-    pushUsage();
+// Claude Code's status line has run: the session data it was handed, with the
+// 5-hour and weekly figures in it once the API has reported them.
+function handleStatusLine(payload) {
+  if (typeof payload.clawd_selftest === 'string') {
+    const seen = wrapperTrials.get(payload.clawd_selftest);
+    if (seen) seen();
     return;
   }
-  // a new sign-in is worth trying at once
-  if (token !== usageToken) {
-    usageToken = token;
-    usageFails = 0;
-    usageRetryAt = 0;
+  if (usageLib.apply(usageState, usageLib.fromStatusLine(payload, Date.now()))) {
+    saveUsage();
+    pushUsage();
   }
-  if (Date.now() < usageRetryAt) return;
+}
+
+// Ask the endpoint, if lib/usage.js agrees that now is a time to. A failure
+// is not shown: the last figures stay up, and the widget marks them once they
+// are old. It goes in the log instead.
+function refreshUsage(reason) {
+  if (usageBusy) return;
+  const now = Date.now();
+  const cred = usageLib.credentials(readJson(CLAUDE_CREDENTIALS), now);
+  const decision = usageLib.decide(usageState, {
+    now,
+    reason,
+    token: cred.token,
+    expired: cred.expired,
+    active: sessions.size > 0,
+  });
+  if (!decision.fetch) return;
   usageBusy = true;
+  usageLib.onAttempt(usageState, now);
+  const failed = (what, failure) => {
+    const wait = usageLib.onFailure(usageState, Date.now(), failure);
+    livenessLog(`usage: ${what}; next try in ${Math.round(wait / 60000)} min`);
+  };
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), USAGE_TIMEOUT_MS);
   fetch(USAGE_URL, {
     signal: ctl.signal,
     headers: {
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${cred.token}`,
       'anthropic-beta': 'oauth-2025-04-20',
       'User-Agent': `claude-stoplight/${app.getVersion()}`,
     },
   })
     .then(async (res) => {
       if (!res.ok) {
-        const err = new Error(
-          res.status === 401 || res.status === 403
-            ? 'Claude Code sign-in expired'
-            : res.status === 429
-              ? 'usage is rate limited'
-              : `usage request failed (${res.status})`
-        );
-        err.refused = true;
-        err.retryAfter = retryAfterMs(res.headers.get('retry-after'), Date.now());
-        throw err;
+        failed(`the endpoint answered ${res.status}`, {
+          status: res.status,
+          retryAfter: usageLib.retryAfterMs(res.headers.get('retry-after'), Date.now()),
+        });
+        return;
       }
-      const bars = usageBars(await res.json());
-      if (!bars.length) throw new Error('no usage limits reported');
-      usage = { bars, fetchedAt: Date.now(), error: null };
-      usageFails = 0;
-      usageRetryAt = 0;
+      const readings = usageLib.fromApi(await res.json(), Date.now());
+      if (readings.length) usageLib.onSuccess(usageState, Date.now(), readings);
+      else failed('the endpoint reported no limits', { status: res.status });
     })
     .catch((err) => {
-      const msg = err && err.name === 'AbortError' ? 'usage request timed out' : (err && err.message) || 'usage unavailable';
-      usage = Object.assign({}, usage, { error: msg });
-      usageFails += 1;
-      usageRetryAt = Date.now() + usageBackoffMs(usageFails, Boolean(err && err.refused), err && err.retryAfter);
+      failed(err && err.name === 'AbortError' ? 'the request timed out' : `the request failed (${(err && err.message) || err})`, {});
     })
     .finally(() => {
       clearTimeout(timer);
       usageBusy = false;
+      saveUsage();
       pushUsage();
     });
+}
+
+// ---------------------------------------------------------------- status line
+
+// Claude Code's status line is where the 5-hour and weekly figures come from
+// (lib/statusline.js). With no status line of the user's own, ours is a bare
+// curl call. With one, theirs is kept behind a wrapper, and the wrapper is
+// tried here, on a stand-in for Claude Code's data, before settings.json is
+// pointed at it: if it does not run cleanly and reach us, their status line is
+// left exactly as it was.
+const wrapperTrials = new Map(); // nonce -> called when the wrapper's forward arrives
+let statusLineBusy = false;
+let statusLineSettled = Promise.resolve(); // the install in flight, for a scripted run to wait on
+
+function savedStatusLine() {
+  return statusline.isCommand(config.statusLineOriginal) ? config.statusLineOriginal : null;
+}
+
+function writeWrapperFiles(original) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  for (const file of statusline.wrapperFiles(original, config.port)) {
+    fs.writeFileSync(path.join(DATA_DIR, file.name), statusline.encode(file));
+  }
+  // the shell it found last time may not be the one it runs under now
+  try {
+    fs.unlinkSync(path.join(DATA_DIR, statusline.FILES.shell));
+  } catch {}
+}
+
+function removeWrapperFiles() {
+  for (const name of Object.values(statusline.FILES)) {
+    try {
+      fs.unlinkSync(path.join(DATA_DIR, name));
+    } catch {}
+  }
+}
+
+function tryWrapper() {
+  return new Promise((resolve) => {
+    const nonce = crypto.randomBytes(8).toString('hex');
+    let heard = false;
+    let done = false;
+    let timer = null;
+    let child = null;
+    const finish = (ok, why) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      wrapperTrials.delete(nonce);
+      livenessLog(ok ? 'status line: the wrapper works' : `status line: the wrapper was not used (${why})`);
+      resolve(ok);
+    };
+    wrapperTrials.set(nonce, () => {
+      heard = true;
+    });
+    try {
+      child = spawn(
+        'powershell.exe',
+        ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(DATA_DIR, statusline.FILES.wrapper)],
+        { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'], cwd: os.homedir() }
+      );
+    } catch (err) {
+      finish(false, err.message);
+      return;
+    }
+    timer = setTimeout(() => {
+      try {
+        child.kill();
+      } catch {}
+      finish(false, 'it did not finish in 20 s');
+    }, 20000);
+    child.stdout.on('data', () => {});
+    child.stdin.on('error', () => {});
+    child.on('error', (err) => finish(false, err.message));
+    child.on('close', (code) => {
+      if (code !== 0) {
+        finish(false, `exit code ${code}`);
+        return;
+      }
+      // the wrapper does not wait for its forward: give that a moment to land
+      const until = Date.now() + 3000;
+      const check = () => {
+        if (heard) finish(true);
+        else if (Date.now() > until) finish(false, 'its forward never arrived');
+        else setTimeout(check, 100);
+      };
+      check();
+    });
+    child.stdin.end(JSON.stringify(statusline.samplePayload(nonce, os.homedir())));
+  });
+}
+
+function statusLineInstalled() {
+  const settings = readJson(CLAUDE_SETTINGS);
+  return Boolean(settings && statusline.isOurs(settings.statusLine));
+}
+
+// Make settings.json's statusLine ours, if it is not already. Quiet: there is
+// nothing here the user needs to answer.
+async function installStatusLine() {
+  // the commands are Windows ones, and so is everything they are run through
+  if (statusLineBusy || process.platform !== 'win32') return;
+  statusLineBusy = true;
+  try {
+    const read = () => (fs.existsSync(CLAUDE_SETTINGS) ? readJson(CLAUDE_SETTINGS) : {});
+    const ctx = () => ({ port: config.port, dir: DATA_DIR, saved: savedStatusLine() });
+    const settings = read();
+    if (settings === null) return; // unparseable: installHooks has already said so
+    const plan = statusline.plan(settings, ctx());
+    if (plan.kind === 'skip') return;
+    if (plan.kind === 'wrap') {
+      // ours already, but what it wraps is not on record: nothing to rebuild it from
+      if (!plan.original) return;
+      writeWrapperFiles(plan.original);
+      if (plan.current) return;
+      if (!(await tryWrapper())) {
+        removeWrapperFiles();
+        config.statusLineState = 'kept';
+        saveConfig();
+        return;
+      }
+    } else if (plan.current) {
+      return;
+    }
+    // settings.json may have been rewritten while the wrapper was being tried
+    const fresh = read();
+    if (fresh === null) return;
+    const again = statusline.plan(fresh, ctx());
+    if (again.kind !== plan.kind || JSON.stringify(again.original) !== JSON.stringify(plan.original)) return;
+    if (fs.existsSync(CLAUDE_SETTINGS)) backupClaudeSettings();
+    if (plan.kind === 'wrap') config.statusLineOriginal = plan.original;
+    else delete config.statusLineOriginal;
+    config.statusLineState = plan.kind;
+    saveConfig();
+    fresh.statusLine = again.statusLine;
+    writeJson(CLAUDE_SETTINGS, fresh);
+    livenessLog(`status line: installed (${plan.kind})`);
+  } catch (err) {
+    livenessLog(`status line: install failed (${err && err.message})`);
+  } finally {
+    statusLineBusy = false;
+  }
+}
+
+// Take ours out again, putting back the status line it wrapped.
+function removeStatusLine() {
+  try {
+    const settings = readJson(CLAUDE_SETTINGS);
+    if (settings && statusline.remove(settings, savedStatusLine())) {
+      backupClaudeSettings();
+      writeJson(CLAUDE_SETTINGS, settings);
+      livenessLog('status line: removed');
+    }
+  } catch (err) {
+    livenessLog(`status line: removal failed (${err && err.message})`);
+    return;
+  }
+  delete config.statusLineOriginal;
+  config.statusLineState = 'off';
+  saveConfig();
+  removeWrapperFiles();
 }
 
 // ---------------------------------------------------------------- hover watch
 
 // Hover is decided here, geometrically, by polling the cursor against the
-// window bounds. Renderer mouseenter/mouseleave can't be trusted: with
+// widget's shape. Renderer mouseenter/mouseleave can't be trusted: with
 // software rendering Windows hit-tests the transparent window per-pixel, so
 // parts of the window never see the mouse at all.
 let hovered = false;
 let hoverSince = 0;
+// which part of the window is the widget right now, from the page: the opened
+// tray, or the lamp and however far the wait pill reaches beside it
+let live = { open: false, reach: 0 };
+let hoverPaused = false; // a scripted run drives the page's hover itself
 
-// The panel has been open long enough to read: every finished turn it showed
+// The tray has been open long enough to read: every finished turn it showed
 // for at least SEEN_MS counts as seen.
 function markSeen(from, to) {
   let changed = false;
@@ -1602,174 +1816,24 @@ function markSeen(from, to) {
 }
 
 function pollHover() {
-  if (!win || win.isDestroyed()) return;
+  if (!win || win.isDestroyed() || hoverPaused) return;
   const p = screen.getCursorScreenPoint();
-  const b = win.getBounds();
-  // only the live bottom slice counts: base widget + open session panel
-  const effH = Math.max(winH(), Math.min(hoverH || 0, b.height));
-  const top = b.y + b.height - effH;
+  const lamp = lampAt(win.getBounds(), corner);
+  // how far the cursor is from the lamp's centre, measured into the fan, in
+  // the units geometry.js draws in
+  const k = scale();
+  const u = (corner[1] === 'l' ? p.x - lamp.x : lamp.x - p.x) / k;
+  const v = (corner[0] === 't' ? p.y - lamp.y : lamp.y - p.y) / k;
   const pad = 3;
-  const inside =
-    p.x >= b.x - pad &&
-    p.x <= b.x + b.width + pad &&
-    p.y >= top - pad &&
-    p.y <= b.y + b.height + pad;
+  const inside = live.open ? G.insideTray(u, v, pad) : G.insideRest(u, v, live.reach, pad);
   if (inside !== hovered) {
     hovered = inside;
     if (hovered) hoverSince = Date.now();
     else markSeen(hoverSince, Date.now());
     win.webContents.send('hover', hovered);
-    // the panel is about to show the usage bars: make sure they are fresh
-    if (hovered && Date.now() - usage.fetchedAt > USAGE_HOVER_MAX_AGE_MS) pollUsage();
+    // the tray is about to show the usage figures: worth a look at their age
+    if (hovered) refreshUsage('hover');
   }
-}
-
-// ---------------------------------------------------------------- clawd escapade
-
-// When the user grabs Clawd off the widget, he is re-rendered in a hidden,
-// full-display overlay window so he can swing at the cursor, fall to the
-// bottom of the desktop, and walk home. The widget window keeps pointer
-// capture for that first drag. The overlay is click-through except while the
-// cursor is over Clawd (the overlay tells us, see 'clawd:catchable'), so he
-// can be caught again mid-fall or mid-walk. The overlay is created at startup
-// and kept (hidden) for the life of the app: a cold load takes about a second,
-// and a quick fling used to release Clawd before the overlay had even loaded,
-// which lost the release and left him glued to the cursor. A "visit" is the
-// same machinery in reverse: Clawd hops down, runs to a session's terminal
-// window, and comes back.
-
-let overlayWin = null;
-let cursorTimer = null;
-let escapadeGuard = null;
-let escapade = false;
-let overlayBegun = false; // the overlay has been told about the current escapade
-let releasePending = false; // the button came up before the overlay was ready
-let lastClawdRect = null; // where the widget last drew Clawd, for visits
-
-function ensureOverlay() {
-  if (overlayWin && !overlayWin.isDestroyed()) return overlayWin;
-  overlayWin = new BrowserWindow({
-    parent: ownerWin,
-    show: false,
-    frame: false,
-    transparent: true,
-    resizable: false,
-    movable: false,
-    minimizable: false,
-    maximizable: false,
-    fullscreenable: false,
-    focusable: false,
-    hasShadow: false,
-    skipTaskbar: true,
-    type: 'toolbar',
-    title: 'Clawd Overlay',
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      spellcheck: false,
-    },
-  });
-  overlayWin.setIgnoreMouseEvents(true);
-  overlayWin.setMenuBarVisibility(false);
-  overlayWin.loadFile(path.join(__dirname, 'renderer', 'overlay.html'));
-  const ov = overlayWin;
-  // a dead overlay page would strand Clawd: end the escapade and rebuild it
-  ov.webContents.on('render-process-gone', () => {
-    if (escapade) endEscapade();
-    if (!ov.isDestroyed()) ov.destroy();
-    setTimeout(ensureOverlay, 1000);
-  });
-  ov.on('closed', () => {
-    if (overlayWin === ov) overlayWin = null;
-  });
-  return overlayWin;
-}
-
-function validRect(rect) {
-  return Boolean(
-    rect && typeof rect.x === 'number' && typeof rect.width === 'number' && rect.width > 0
-  );
-}
-
-// rect: Clawd's box in the widget (CSS px); visit: { x } screen coordinate to run to, or null
-function startEscapade(rect, visit) {
-  if (escapade || !win || win.isDestroyed() || !validRect(rect)) return;
-  escapade = true;
-  overlayBegun = false;
-  releasePending = false;
-  const ov = ensureOverlay();
-  const wb = win.getBounds();
-  const disp = screen.getDisplayMatching(wb);
-  const params = {
-    state: aggregate(),
-    origin: { x: disp.bounds.x, y: disp.bounds.y },
-    size: { w: disp.bounds.width, h: disp.bounds.height },
-    floor: disp.workArea.y + disp.workArea.height,
-    home: { x: wb.x + rect.x, y: wb.y + rect.y },
-    unit: rect.width / 100, // px per Clawd viewBox unit
-    visit: visit || null,
-  };
-  ov.setBounds(disp.bounds);
-  const start = () => {
-    if (!escapade || !overlayWin || overlayWin.isDestroyed()) return;
-    overlayWin.setIgnoreMouseEvents(true);
-    overlayWin.showInactive();
-    overlayWin.setAlwaysOnTop(true, 'screen-saver');
-    overlayWin.webContents.send('clawd:begin', params);
-    overlayBegun = true;
-    // the widget's own Clawd yields only now, so he never vanishes before the
-    // overlay is ready to draw him
-    if (win && !win.isDestroyed()) win.webContents.send('clawd:away');
-    if (releasePending) {
-      releasePending = false;
-      overlayWin.webContents.send('clawd:released');
-    }
-    // The cursor feed runs for the whole escapade: it drives the drag, and it
-    // lets the overlay notice when the mouse is over Clawd so he can be caught.
-    clearInterval(cursorTimer);
-    cursorTimer = setInterval(() => {
-      if (overlayWin && !overlayWin.isDestroyed()) {
-        overlayWin.webContents.send('clawd:cursor', screen.getCursorScreenPoint());
-      }
-    }, 16);
-  };
-  if (ov.webContents.isLoading()) ov.webContents.once('did-finish-load', start);
-  else start();
-  armEscapadeGuard();
-}
-
-// never leave Clawd missing from the widget if the overlay misbehaves
-function armEscapadeGuard() {
-  clearTimeout(escapadeGuard);
-  escapadeGuard = setTimeout(endEscapade, ESCAPADE_GUARD_MS);
-}
-
-function beginEscapade(rect) {
-  if (validRect(rect)) lastClawdRect = rect;
-  startEscapade(rect, null);
-}
-
-// Run to a window (screen-coordinate rect) if it sits on Clawd's own display.
-function beginVisit(rect) {
-  if (escapade || !win || win.isDestroyed() || !lastClawdRect) return;
-  const disp = screen.getDisplayMatching(win.getBounds());
-  const x = Math.round((rect.left + rect.right) / 2);
-  if (x < disp.bounds.x + 40 || x > disp.bounds.x + disp.bounds.width - 40) return;
-  startEscapade(lastClawdRect, { x });
-}
-
-function endEscapade() {
-  clearInterval(cursorTimer);
-  clearTimeout(escapadeGuard);
-  escapade = false;
-  overlayBegun = false;
-  releasePending = false;
-  if (overlayWin && !overlayWin.isDestroyed()) {
-    overlayWin.setIgnoreMouseEvents(true);
-    overlayWin.hide();
-  }
-  if (win && !win.isDestroyed()) win.webContents.send('clawd:restore');
 }
 
 // ---------------------------------------------------------------- auto-update
@@ -1885,8 +1949,16 @@ function buildMenu() {
       click: (item) => setAutostart(item.checked),
     },
     {
+      // the status line goes with them: it is one more thing Claude Code runs for us
       label: installed ? 'Remove Claude Code hooks' : 'Install Claude Code hooks',
-      click: () => (installed ? removeHooks(true) : installHooks(true)),
+      click: () => {
+        if (installed) {
+          removeStatusLine();
+          removeHooks(true);
+        } else if (installHooks(true) && config.statusLine) {
+          installStatusLine();
+        }
+      },
     },
     {
       label: 'Open Claude settings folder',
@@ -1912,14 +1984,13 @@ function createTray() {
 
 // ---------------------------------------------------------------- ipc
 
-ipcMain.on('widget:expand', (_e, px) => {
-  hoverH = Math.round(Number(px)) || 0;
+ipcMain.on('widget:live', (_e, region) => {
+  live = {
+    open: Boolean(region && region.open),
+    reach: clampInt(region && region.reach, 0, G.SIZE, 0),
+  };
 });
-ipcMain.on('widget:collapse', () => {
-  hoverH = 0;
-});
-ipcMain.on('widget:focus-session', (_e, id, clawdRect) => {
-  if (validRect(clawdRect)) lastClawdRect = clawdRect;
+ipcMain.on('widget:focus-session', (_e, id) => {
   const s = sessions.get(String(id || ''));
   if (s && s.unreadAt) {
     s.unreadAt = null;
@@ -1928,28 +1999,6 @@ ipcMain.on('widget:focus-session', (_e, id, clawdRect) => {
   }
   focusSessionTerminal(String(id || ''));
 });
-ipcMain.on('clawd:warm', () => ensureOverlay()); // normally a no-op: it is resident
-ipcMain.on('clawd:grab', (_e, rect) => beginEscapade(rect));
-ipcMain.on('clawd:release', () => {
-  if (!escapade) return;
-  // released before the overlay took over (it was still loading): deliver the
-  // release right after 'clawd:begin' instead of dropping it on the floor
-  if (!overlayBegun) {
-    releasePending = true;
-    return;
-  }
-  if (overlayWin && !overlayWin.isDestroyed()) overlayWin.webContents.send('clawd:released');
-});
-// the overlay reports whether the cursor is over Clawd; only then may it take clicks
-ipcMain.on('clawd:catchable', (_e, over) => {
-  if (escapade && overlayWin && !overlayWin.isDestroyed()) {
-    overlayWin.setIgnoreMouseEvents(!over);
-  }
-});
-ipcMain.on('clawd:caught', () => {
-  if (escapade) armEscapadeGuard();
-});
-ipcMain.on('clawd:done', () => endEscapade());
 ipcMain.handle('settings:get', () => ({
   port: config.port,
   sizePct: config.sizePct,
@@ -1959,9 +2008,56 @@ ipcMain.handle('settings:get', () => ({
   notify: !!config.notify,
   notifyAfterSec: config.notifyAfterSec,
   notifySound: !!config.notifySound,
+  statusLine: !!config.statusLine,
+  // how the status line stands: 'plain' or 'wrap' when ours is in place,
+  // 'kept' when the user's own was left alone, otherwise not installed
+  statusLineState: statusLineInstalled() ? config.statusLineState || 'plain' : config.statusLineState === 'kept' ? 'kept' : 'off',
+  sizeMin: SIZE_MIN,
+  sizeMax: SIZE_MAX,
   version: app.getVersion(),
 }));
 ipcMain.on('settings:save', (_e, s) => applySettings(s || {}));
+
+// ---------------------------------------------------------------- scripted run
+
+function runSmoke() {
+  require('./lib/smoke')({
+    dir: SMOKE,
+    win,
+    port: config.port,
+    // the page's hover, driven by the script instead of the cursor
+    setHover(on) {
+      hoverPaused = true;
+      hovered = Boolean(on);
+      win.webContents.send('hover', hovered);
+    },
+    // as if the window had been dragged there and let go
+    moveTo(pos) {
+      suppressMoveSave = true;
+      win.setBounds({ x: pos.x, y: pos.y, width: winSize(), height: winSize() });
+      suppressMoveSave = false;
+      settleWindow();
+    },
+    workArea: () => screen.getPrimaryDisplay().workArea,
+    state: () => ({
+      corner,
+      live,
+      lamp: config.lamp,
+      dock: config.dock,
+      bounds: win.getBounds(),
+      winSize: winSize(),
+      usage: usageLib.snapshot(usageState, Date.now()),
+    }),
+    settled: () => statusLineSettled,
+    extra: () => ({
+      platform: process.platform,
+      hooksInstalled: hooksInstalled(),
+      statusLine: (readJson(CLAUDE_SETTINGS) || {}).statusLine || null,
+      statusLineState: config.statusLineState || null,
+    }),
+    quit: (code) => app.exit(code),
+  });
+}
 
 // ---------------------------------------------------------------- lifecycle
 
@@ -1978,23 +2074,23 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     loadConfig();
     loadSessions();
+    loadUsage();
     startServer();
     createWindow();
     createTray();
-    ensureOverlay(); // resident, so a grab never waits on a cold page load
     setInterval(pruneSessions, 60 * 1000);
     setInterval(syncSessions, LIVENESS_MS);
     syncSessions(); // pick up sessions already running, drop ones that died while we were away
     watchSessionsDir();
-    setInterval(pollUsage, USAGE_POLL_MS);
-    pollUsage();
+    setInterval(() => refreshUsage('timer'), USAGE_TIMER_MS);
+    refreshUsage('startup');
     setInterval(pollHover, 120);
     // a docked widget follows its screen edge when the work area changes
     // (taskbar hidden/shown/resized, display added/removed, DPI change)
     screen.on('display-metrics-changed', replaceWindow);
     screen.on('display-added', replaceWindow);
     screen.on('display-removed', replaceWindow);
-    initAutoUpdate();
+    if (!SMOKE) initAutoUpdate();
 
     // First-run setup: install hooks once; enable autostart on the first packaged
     // run (tracked separately so a prior dev run doesn't skip it). Both stay
@@ -2006,11 +2102,14 @@ if (!app.requestSingleInstanceLock()) {
     } else if (hooksInstalled() && !hooksComplete()) {
       installHooks(false); // an update added hook events; keep the install current
     }
-    if (app.isPackaged && !config.autostartDone) {
+    // the status line goes wherever the hooks are, unless it has been turned off
+    if (config.statusLine && hooksInstalled()) statusLineSettled = installStatusLine();
+    if (app.isPackaged && !config.autostartDone && !SMOKE) {
       setAutostart(true);
       config.autostartDone = true;
       saveConfig();
     }
+    if (SMOKE) runSmoke();
   });
 
   app.on('window-all-closed', () => app.quit());
