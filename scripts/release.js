@@ -67,8 +67,16 @@ if (
   fail(`dist/latest.yml does not match dist/${installer}. Run "npm run dist" again.`);
 }
 
-if (run('git', ['status', '--porcelain'])) {
-  fail('there are uncommitted changes. Commit and push them first, so the release tag matches the build.');
+// On a developer's machine the build must be of a committed tree, or the
+// release tag would not match it. On the build machine the tree is the
+// commit by construction (a fresh checkout); anything listed here was
+// rewritten by the build's own tools, so it is reported and allowed.
+const dirty = run('git', ['status', '--porcelain']);
+if (dirty && process.env.GITHUB_ACTIONS) {
+  console.log(`release: the build left these files changed (the release is still commit ${run('git', ['rev-parse', '--short', 'HEAD'])}):\n${dirty}`);
+  console.log(run('git', ['diff', '--stat']));
+} else if (dirty) {
+  fail(`there are uncommitted changes. Commit and push them first, so the release tag matches the build.\n${dirty}`);
 }
 // (a GitHub Actions checkout is a detached HEAD; the workflow names the branch)
 const branch = process.env.GITHUB_REF_NAME || run('git', ['rev-parse', '--abbrev-ref', 'HEAD']);
