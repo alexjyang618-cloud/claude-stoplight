@@ -76,6 +76,60 @@ test('the endpoint answer gives all three, by limits[] or by the older fields', 
   assert.deepEqual(usage.fromApi(null, T0), []);
 });
 
+test('a figure that is missing is no figure, not an empty gauge', () => {
+  assert.deepEqual(usage.fromStatusLine({ rate_limits: { five_hour: { used_percentage: null, resets_at: 1738425600 } } }, T0), []);
+  assert.deepEqual(usage.fromStatusLine({ rate_limits: { five_hour: { used_percentage: '', resets_at: 1738425600 } } }, T0), []);
+  assert.deepEqual(usage.fromStatusLine({ rate_limits: { five_hour: { used_percentage: false } } }, T0), []);
+  assert.deepEqual(usage.fromApi({ five_hour: { utilization: null }, seven_day: { utilization: [] } }, T0), []);
+  assert.deepEqual(usage.fromApi({ limits: [{ kind: 'session', percent: null }] }, T0), []);
+  // nought is a figure, and so is a number written as text
+  assert.equal(usage.fromStatusLine({ rate_limits: { five_hour: { used_percentage: 0 } } }, T0)[0].percent, 0);
+  assert.equal(usage.fromStatusLine({ rate_limits: { five_hour: { used_percentage: '12.4' } } }, T0)[0].percent, 12);
+});
+
+test('an idle session\'s status line does not pass old figures off as new', () => {
+  const HOUR = 60 * MIN;
+  const window1 = (T0 + 2 * HOUR) / 1000; // reset times, in the seconds Claude Code sends
+  const window2 = (T0 + 7 * HOUR) / 1000;
+  const say = (percent, resets) => usage.fromStatusLine({ rate_limits: { five_hour: { used_percentage: percent, resets_at: resets } } }, 0);
+  const s = usage.createState();
+  const bar = (now) => usage.snapshot(s, now).bars[0];
+
+  // a session in a turn: its figures are the latest there are
+  assert.equal(usage.applyStatusLine(s, say(40, window1), { now: T0, fresh: true, activeAt: T0 }), true);
+  assert.deepEqual([bar(T0).percent, bar(T0).asOf], [40, T0]);
+
+  // another session, idle for an hour, has its status line re-run: it still
+  // carries what it was told an hour ago, which is less than is known now
+  const later = T0 + 10 * MIN;
+  assert.equal(usage.applyStatusLine(s, say(25, window1), { now: later, fresh: false, activeAt: T0 - 60 * MIN }), false);
+  assert.deepEqual([bar(later).percent, bar(later).asOf], [40, T0]);
+  // nor does it make the figure younger by repeating it
+  assert.equal(usage.applyStatusLine(s, say(40, window1), { now: later, fresh: false, activeAt: T0 - 60 * MIN }), false);
+  assert.equal(bar(later).asOf, T0);
+
+  // an idle session that knows more (further into the same window) is believed,
+  // as of when it was last active, not as of now
+  assert.equal(usage.applyStatusLine(s, say(55, window1), { now: later, fresh: false, activeAt: T0 + 4 * MIN }), true);
+  assert.deepEqual([bar(later).percent, bar(later).asOf], [55, T0 + 4 * MIN]);
+  // and so is one that has seen a later window
+  assert.equal(usage.applyStatusLine(s, say(3, window2), { now: later, fresh: false, activeAt: T0 + 6 * MIN }), true);
+  assert.deepEqual([bar(later).percent, bar(later).resetsAt, bar(later).asOf], [3, window2 * 1000, T0 + 6 * MIN]);
+  // but never one from the window before
+  assert.equal(usage.applyStatusLine(s, say(99, window1), { now: later, fresh: false, activeAt: T0 + 8 * MIN }), false);
+  assert.equal(bar(later).percent, 3);
+
+  // with nothing known at all, an idle session's figures are better than none
+  const empty = usage.createState();
+  assert.equal(usage.applyStatusLine(empty, say(25, window1), { now: later, fresh: false, activeAt: T0 - 60 * MIN }), true);
+  assert.deepEqual([usage.snapshot(empty, later).bars[0].percent, usage.snapshot(empty, later).bars[0].asOf], [25, T0 - 60 * MIN]);
+
+  // a fresh one always wins, even downwards (a new window with no reset time yet)
+  assert.equal(usage.applyStatusLine(s, say(1, undefined), { now: later, fresh: true, activeAt: later }), true);
+  assert.deepEqual([bar(later).percent, bar(later).asOf], [1, later]);
+  assert.equal(usage.applyStatusLine(s, [], { now: later, fresh: true, activeAt: later }), false);
+});
+
 test('the snapshot lists the figures outer gauge first and drops ancient ones', () => {
   const s = usage.createState();
   usage.apply(s, usage.fromApi({ limits: [{ kind: 'weekly_scoped', percent: 5, scope: { model: { display_name: 'Opus' } } }] }, T0));

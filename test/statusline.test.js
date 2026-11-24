@@ -99,6 +99,11 @@ test('the wrapper script names the port and its files, and no template is left u
   assert.match(text, /-replace '\\\\', '\/'/);
   // Windows PowerShell 5.1 has to run it
   assert.ok(!/\?\?|\?\./.test(text));
+  // Nothing is started by bare name: Windows would look for it in the working
+  // folder, which is whatever repository the session is in. curl is System32's.
+  assert.match(text, /\$curl = Join-Path \$env:SystemRoot 'System32\\curl\.exe'/);
+  assert.ok(!/Start-WithInput '[^']*'/.test(text), 'a program started by a literal name');
+  assert.ok(!/'powershell\|powershell\.exe'/.test(text));
   // in PowerShell the comma binds tighter than +, so 'a' + $b, $c is 'a' + ($b, $c):
   // every pair this script returns has its first half in brackets
   for (const pair of text.match(/return @\(.*\)/g)) assert.match(pair, /^return @\(\(.+\), \$(true|false)\)$|^return @\('[^'+]+', \$(true|false)\)$/);

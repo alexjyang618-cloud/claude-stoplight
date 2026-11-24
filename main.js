@@ -113,6 +113,8 @@ const CLAUDE_CREDENTIALS = path.join(CLAUDE_DIR, '.credentials.json');
 const USAGE_PATH = path.join(DATA_DIR, 'usage.json');
 const USAGE_TIMER_MS = 10 * 60 * 1000;
 const USAGE_TIMEOUT_MS = 10 * 1000;
+// A status line from a session heard from this recently carries current figures.
+const STATUS_FRESH_MS = 2 * 60 * 1000;
 
 // A turn that ran at least this long earns Clawd a celebratory hop when it ends.
 const LONG_TURN_MS = 60 * 1000;
@@ -1168,9 +1170,22 @@ function dockOf(a, r, tol) {
   };
 }
 
-function dockFor(a, p, tol) {
+// Which edges the window is docked to. Only the two beside the lamp count:
+// on a small display the window's far edge can reach the opposite side of
+// the work area, and a dock recorded there would carry the lamp across the
+// screen the next time the window is placed.
+function dockFor(a, p, tol, c) {
   const s = winSize();
-  return dockOf(a, { x: p.x, y: p.y, width: s, height: s }, tol);
+  return lampSide(dockOf(a, { x: p.x, y: p.y, width: s, height: s }, tol), c);
+}
+
+function lampSide(dock, c) {
+  return {
+    left: Boolean(dock.left) && c[1] === 'l',
+    right: Boolean(dock.right) && c[1] === 'r',
+    top: Boolean(dock.top) && c[0] === 't',
+    bottom: Boolean(dock.bottom) && c[0] === 'b',
+  };
 }
 
 // Snap the docked edges to the work area, then clamp.
@@ -1213,6 +1228,7 @@ function migrateLamp() {
   // meant to sit on it (typically on top of a taskbar that has since been hidden)
   if (!config.dock) config.dock = dockOf(workAreaAt(centre), old, DOCK_MIGRATE_TOL);
   const c = cornerFor(centre, config.dock);
+  config.dock = lampSide(config.dock, c);
   const s = winSize();
   const pos = { x: c[1] === 'l' ? old.x : old.x + old.width - s, y: c[0] === 't' ? old.y : old.y + old.height - s };
   delete config.x;
@@ -1280,7 +1296,7 @@ function settleWindow() {
   }
   config.lamp = lamp;
   config.corner = corner;
-  config.dock = dockFor(a, pos, DOCK_TOL);
+  config.dock = dockFor(a, pos, DOCK_TOL, corner);
   saveConfig();
   moveWindow(pos);
   sendConfigToWidget();
@@ -1565,7 +1581,13 @@ function handleStatusLine(payload) {
     if (seen) seen();
     return;
   }
-  if (usageLib.apply(usageState, usageLib.fromStatusLine(payload, Date.now()))) {
+  // an idle session's status line still carries the figures of its last
+  // reply, however long ago that was (see applyStatusLine)
+  const now = Date.now();
+  const s = typeof payload.session_id === 'string' ? sessions.get(payload.session_id) : null;
+  const fresh = !s || s.state !== 'ready' || now - s.lastEvent <= STATUS_FRESH_MS;
+  const readings = usageLib.fromStatusLine(payload, now);
+  if (usageLib.applyStatusLine(usageState, readings, { now, fresh, activeAt: s ? s.lastEvent : now })) {
     saveUsage();
     pushUsage();
   }
@@ -1752,6 +1774,11 @@ async function installStatusLine() {
         saveConfig();
         return;
       }
+      // turned off while the wrapper was being tried
+      if (!config.statusLine) {
+        removeWrapperFiles();
+        return;
+      }
     } else if (plan.current) {
       return;
     }
@@ -1772,26 +1799,39 @@ async function installStatusLine() {
     livenessLog(`status line: install failed (${err && err.message})`);
   } finally {
     statusLineBusy = false;
+    // asked to remove it while this was under way
+    if (!config.statusLine && statusLineInstalled()) removeStatusLine();
   }
 }
 
-// Take ours out again, putting back the status line it wrapped.
+// Take ours out again, putting back the status line it wrapped. The saved
+// original and the wrapper's files are the only way back to the user's own
+// status line, so they are let go of only once settings.json no longer points
+// at the wrapper. If it cannot be read or written now, everything stays as it
+// is and the next launch tries again. Returns true when ours is out.
 function removeStatusLine() {
+  // an install in flight finishes first, then takes itself out (see its end)
+  if (statusLineBusy) return false;
   try {
-    const settings = readJson(CLAUDE_SETTINGS);
-    if (settings && statusline.remove(settings, savedStatusLine())) {
+    const settings = fs.existsSync(CLAUDE_SETTINGS) ? readJson(CLAUDE_SETTINGS) : {};
+    if (settings === null) {
+      livenessLog('status line: not removed, settings.json could not be read');
+      return false;
+    }
+    if (statusline.remove(settings, savedStatusLine())) {
       backupClaudeSettings();
       writeJson(CLAUDE_SETTINGS, settings);
       livenessLog('status line: removed');
     }
   } catch (err) {
     livenessLog(`status line: removal failed (${err && err.message})`);
-    return;
+    return false;
   }
   delete config.statusLineOriginal;
   config.statusLineState = 'off';
   saveConfig();
   removeWrapperFiles();
+  return true;
 }
 
 // ---------------------------------------------------------------- hover watch
@@ -1961,7 +2001,16 @@ function buildMenu() {
       label: installed ? 'Remove Claude Code hooks' : 'Install Claude Code hooks',
       click: () => {
         if (installed) {
-          removeStatusLine();
+          // the status line is put back to how it was first; with the hooks
+          // gone, nothing would take it out later
+          if (statusLineInstalled() && !removeStatusLine()) {
+            dialog.showErrorBox(
+              'Clawd',
+              `The status line command could not be removed from ${CLAUDE_SETTINGS}, so the hooks were left in place too. ` +
+                'Check that the file is valid JSON and try again.'
+            );
+            return;
+          }
           removeHooks(true);
         } else if (installHooks(true) && config.statusLine) {
           installStatusLine();
@@ -2110,8 +2159,10 @@ if (!app.requestSingleInstanceLock()) {
     } else if (hooksInstalled() && !hooksComplete()) {
       installHooks(false); // an update added hook events; keep the install current
     }
-    // the status line goes wherever the hooks are, unless it has been turned off
+    // the status line goes wherever the hooks are, unless it has been turned
+    // off (and if taking it out failed last time, this is the next try)
     if (config.statusLine && hooksInstalled()) statusLineSettled = installStatusLine();
+    else if (!config.statusLine && statusLineInstalled()) removeStatusLine();
     if (app.isPackaged && !config.autostartDone && !SMOKE) {
       setAutostart(true);
       config.autostartDone = true;

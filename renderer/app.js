@@ -706,6 +706,12 @@ function endPress(e) {
 }
 lampEl.addEventListener('pointerup', endPress);
 lampEl.addEventListener('pointercancel', endPress);
+// a press that loses the pointer (another window took over) is over too,
+// or the tray would stay open and he would wiggle until the next click
+lampEl.addEventListener('lostpointercapture', endPress);
+window.addEventListener('blur', () => {
+  if (press !== null) endPress({ pointerId: press });
+});
 
 // --------------------------------------------------------------------- hover
 
