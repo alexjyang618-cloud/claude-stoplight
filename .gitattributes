@@ -1,0 +1,3 @@
+# The icon script writes this file with LF endings; keeping it LF in every
+# checkout stops a Windows build from seeing it as changed.
+build/icon.svg text eol=lf
