@@ -79,7 +79,7 @@ A fork that wants its own update channel sets `build.publish.owner` in `package.
 
 1. Right-click the tray icon → **Remove Claude Code hooks** (this also removes the status line command, and restores yours if you had one).
 2. Uninstall *Clawd* from Windows Settings → Apps.
-3. Optionally delete `%USERPROFILE%\.claude-stoplight\`.
+3. Optionally delete `%USERPROFILE%\.claude-stoplight\`. Do step 1 first: if Clawd wrapped a status line of your own, the wrapper lives in that folder.
 
 ## Building from source
 
