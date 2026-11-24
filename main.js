@@ -8,6 +8,7 @@ const os = require('os');
 const G = require('./renderer/geometry.js'); // the opened widget's shape, shared with the page
 const usageLib = require('./lib/usage');
 const statusline = require('./lib/statusline');
+const renewal = require('./lib/renew');
 
 // Software rendering: drops the GPU process / shared textures, a big chunk of
 // the app's memory footprint. Plenty for a tiny widget with CSS animations.
@@ -26,6 +27,9 @@ const CONFIG_PATH = path.join(DATA_DIR, 'config.json');
 const STATE_PATH = path.join(DATA_DIR, 'state.json');
 const CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
 const CLAUDE_SETTINGS = path.join(CLAUDE_DIR, 'settings.json');
+// Claude Code's own config file: beside the folder, or in it when the folder
+// has been moved
+const CLAUDE_CONFIG = process.env.CLAUDE_CONFIG_DIR ? path.join(CLAUDE_DIR, '.claude.json') : path.join(os.homedir(), '.claude.json');
 
 // CLAWD_SMOKE=<folder>: play a scripted session at ourselves, save what the
 // widget showed there, and exit (lib/smoke.js). For checking a build unattended.
@@ -49,6 +53,7 @@ const DEFAULTS = {
   notifyAfterSec: 30,
   notifySound: false, // play the Windows notification sound with it
   statusLine: true, // read plan usage from Claude Code's status line (see lib/statusline.js)
+  usageRenew: true, // have Claude Code renew its sign-in when it has lapsed (see lib/renew.js)
 };
 
 // Hook events we subscribe to. The tool events take a tool matcher. The tool
@@ -113,6 +118,9 @@ const CLAUDE_CREDENTIALS = path.join(CLAUDE_DIR, '.credentials.json');
 const USAGE_PATH = path.join(DATA_DIR, 'usage.json');
 const USAGE_TIMER_MS = 10 * 60 * 1000;
 const USAGE_TIMEOUT_MS = 10 * 1000;
+// Where Claude Code is run to renew its sign-in (lib/renew.js). A session
+// whose folder this is, is that run, not one of the user's.
+const RENEW_DIR = path.join(DATA_DIR, renewal.DIR);
 // A status line from a session heard from this recently carries current figures.
 const STATUS_FRESH_MS = 2 * 60 * 1000;
 
@@ -171,6 +179,7 @@ function loadConfig() {
   config.pruneHours = clampInt(config.pruneHours, 1, 168, DEFAULTS.pruneHours);
   config.notifyAfterSec = clampInt(config.notifyAfterSec, 0, 3600, DEFAULTS.notifyAfterSec);
   config.statusLine = config.statusLine !== false;
+  config.usageRenew = config.usageRenew !== false;
 }
 
 function saveConfig() {
@@ -469,6 +478,8 @@ function handleEvent(event, payload) {
   // id would be a session no process backs, holding the light for pruneHours
   const id = payload && typeof payload.session_id === 'string' && payload.session_id;
   if (!id) return;
+  // our own run of Claude Code (it loads no hooks; a version that did would land here)
+  if (renewal.isRunDir(payload.cwd, RENEW_DIR, process.platform)) return;
   const current = sessions.get(id);
   const now = Date.now();
   if (ASYNC_EVENTS.has(event) && isStraggler(current, now)) return;
@@ -926,6 +937,9 @@ function reconcileSessions(names, bootTime) {
   for (const rec of reg.byId.values()) {
     if (sessions.has(rec.id) || !alive(rec.pid, null, rec.pstart)) continue;
     if (reaped.has(rec.id) && now - reaped.get(rec.id) < REAP_GUARD_MS) continue;
+    // Claude Code being run to renew its sign-in is in the registry for the
+    // second it takes, like any other; it is not a session
+    if (renewal.isRunDir(rec.cwd, RENEW_DIR, process.platform)) continue;
     const idle = rec.status === 'idle';
     const since = rec.statusAt || rec.startedAt || now;
     sessions.set(rec.id, {
@@ -1440,6 +1454,7 @@ function applySettings(next) {
   config.sizePct = clampInt(next.sizePct, SIZE_MIN, SIZE_MAX, DEFAULTS.sizePct);
   config.pruneHours = clampInt(next.pruneHours, 1, 168, DEFAULTS.pruneHours);
   config.statusLine = next.statusLine !== false;
+  config.usageRenew = next.usageRenew !== false;
   config.dimIdle = !!next.dimIdle;
   config.clickThroughIdle = !!next.clickThroughIdle;
   config.notify = !!next.notify;
@@ -1593,12 +1608,75 @@ function handleStatusLine(payload) {
   }
 }
 
+// Claude Code keeps the endpoint's last answer to it in its own config file
+// (lib/usage.js: fromCache). Looked at when the answer held here is old enough
+// that a newer one would be worth having, and read only if the file has
+// changed since: Claude Code rewrites it often, and it can be large.
+let configSeen = '';
+
+function takeSavedUsage(now) {
+  if (now - usageState.lastOkAt < usageLib.LIVE_AGE_MS) return;
+  let stamp;
+  try {
+    const st = fs.statSync(CLAUDE_CONFIG);
+    stamp = `${st.mtimeMs}:${st.size}`;
+  } catch {
+    return;
+  }
+  if (stamp === configSeen) return;
+  const json = readJson(CLAUDE_CONFIG);
+  if (json === null) return; // caught half-written: the next look reads it again
+  configSeen = stamp;
+  const saved = usageLib.fromCache(json, now);
+  if (!usageLib.applyCached(usageState, saved)) return;
+  livenessLog(`usage: took the figures Claude Code was given ${Math.round((now - saved.at) / 60000)} min ago`);
+  saveUsage();
+  pushUsage();
+}
+
+// The sign-in token has expired and a figure is wanted: have Claude Code
+// renew it, by running its /usage command out of sight (lib/renew.js). When
+// that leaves a good token, the question that brought us here is asked again:
+// the figures Claude Code was given are in its config file by then, and
+// failing that the endpoint can now be asked.
+let renewing = false;
+
+function renewSignIn(reason) {
+  if (renewing || !config.usageRenew) return;
+  const started = Date.now();
+  const found = renewal.find(process.env, process.platform);
+  if (!found) {
+    const wait = usageLib.onRenewResult(usageState, started, false);
+    livenessLog(`usage: the sign-in has expired and Claude Code was not found to renew it; next look in ${Math.round(wait / 60000)} min`);
+    saveUsage();
+    return;
+  }
+  renewing = true;
+  usageLib.onRenewStart(usageState, started);
+  saveUsage();
+  renewal.run(found, { cwd: RENEW_DIR, env: process.env }).then((how) => {
+    renewing = false;
+    const now = Date.now();
+    const cred = usageLib.credentials(readJson(CLAUDE_CREDENTIALS), now);
+    const ok = Boolean(cred.token && !cred.expired);
+    const wait = usageLib.onRenewResult(usageState, now, ok);
+    livenessLog(
+      ok
+        ? `usage: Claude Code renewed its sign-in (${how}, ${now - started} ms)`
+        : `usage: Claude Code was run to renew its sign-in and left it expired (${how}); next try in ${Math.round(wait / 60000)} min`
+    );
+    saveUsage();
+    if (ok) refreshUsage(reason);
+  });
+}
+
 // Ask the endpoint, if lib/usage.js agrees that now is a time to. A failure
 // is not shown: the last figures stay up, and the widget marks them once they
 // are old. It goes in the log instead.
 function refreshUsage(reason) {
   if (usageBusy) return;
   const now = Date.now();
+  takeSavedUsage(now);
   const cred = usageLib.credentials(readJson(CLAUDE_CREDENTIALS), now);
   const decision = usageLib.decide(usageState, {
     now,
@@ -1607,6 +1685,7 @@ function refreshUsage(reason) {
     expired: cred.expired,
     active: sessions.size > 0,
   });
+  if (decision.renew) renewSignIn(reason);
   if (!decision.fetch) return;
   usageBusy = true;
   usageLib.onAttempt(usageState, now);
@@ -2066,6 +2145,7 @@ ipcMain.handle('settings:get', () => ({
   notifyAfterSec: config.notifyAfterSec,
   notifySound: !!config.notifySound,
   statusLine: !!config.statusLine,
+  usageRenew: !!config.usageRenew,
   // how the status line stands: 'plain' or 'wrap' when ours is in place,
   // 'kept' when the user's own was left alone, otherwise not installed
   statusLineState: statusLineInstalled() ? config.statusLineState || 'plain' : config.statusLineState === 'kept' ? 'kept' : 'off',

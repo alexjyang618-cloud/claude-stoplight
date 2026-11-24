@@ -44,7 +44,9 @@ The widget just listens, tracks each session's state (what it's doing and which 
 
 ## Where the usage figures come from
 
-**Claude Code's status line**, for the 5-hour and weekly figures. After every reply, Claude Code runs one status line command and hands it the session's data, including the usage the API has just reported to it. The widget registers a command that passes that data on, the same way the hooks do: one `curl.exe` call to `127.0.0.1` that prints nothing, so your status line stays blank. This needs no sign-in token and makes no request to Anthropic, and the figures are current whenever Claude Code is in use.
+**Claude Code's status line**, for the 5-hour and weekly figures. After every reply, Claude Code in a terminal runs one status line command and hands it the session's data, including the usage the API has just reported to it. The widget registers a command that passes that data on, the same way the hooks do: one `curl.exe` call to `127.0.0.1` that prints nothing, so your status line stays blank. This needs no sign-in token and makes no request to Anthropic, and the figures are current whenever Claude Code is in use in a terminal.
+
+- Only a terminal session has a status line. A session in the Claude desktop app (its Code tab, or a cloud session) runs the hooks, so the lamp follows it, but it never runs the status line command, so its replies bring no usage figures.
 
 - If you already have a status line of your own, it is kept. Claude Code is pointed at a small PowerShell script in `%USERPROFILE%\.claude-stoplight\` instead, which forwards the data to the widget without waiting for it and then runs your command with the same input, through the same shell Claude Code would have used, passing its output and exit code straight through. It costs your status line the time PowerShell takes to start. Before `settings.json` is changed the widget tries the wrapper on stand-in data; if your status line does not run cleanly through it, yours is left exactly as it was.
 - Turning off **Settings → Plan usage → Read usage from Claude Code's status line**, or removing the hooks from the tray menu, takes the command out again and puts back the entry it wrapped, exactly.
@@ -52,6 +54,22 @@ The widget just listens, tracks each session's state (what it's doing and which 
 **The usage service** (`api.anthropic.com/api/oauth/usage`, read with the Claude Code sign-in token from `.credentials.json`), for the top model's weekly figure, which the status line does not carry, and for the other two before any session has replied. That service is undocumented and refuses anything that asks it often, so the widget asks rarely: when a turn ends or the tray is opened and its own figure is more than a quarter of an hour old, never more than once in five minutes, and never with a token that has expired (Claude Code renews its token only when it next runs, so an expired one just means Claude Code has been idle). After a refusal it waits as long as the service asks, or ten minutes, doubling each time up to an hour.
 
 When a figure cannot be refreshed, nothing is reported as an error. The figure stays up; once it is a quarter of an hour old it is drawn dim with its age (*40m ago*) in place of its reset time, and when its reset time passes it returns to zero. What went wrong is noted in `%USERPROFILE%\.claude-stoplight\liveness.log`. The last figures are remembered across restarts.
+
+**Claude Code's own saved answer.** Claude Code keeps the usage service's last answer to it in its config file (`cachedUsageUtilization` in `.claude.json`). The widget reads that when it is newer than what it holds: no token, no request.
+
+**If you work only in the Claude app**, the first two sources dry up: the app's sessions run no status line, and the sign-in token is renewed only when Claude Code itself makes a request from a terminal session (it lasts about eight hours). So when the token has expired and a figure is wanted, the widget has Claude Code renew it, by running what you would type at a terminal:
+
+```
+claude -p /usage --setting-sources local --strict-mcp-config --no-session-persistence
+```
+
+- `/usage` run this way is not a conversation: nothing is sent to a model, and it takes a second or two. Claude Code renews its sign-in to ask the usage service, and saves the answer where the widget reads it.
+- The run is kept to itself: none of your settings are loaded, so none of your hooks fire for it; none of your MCP servers are started; no transcript is saved. It runs in `%USERPROFILE%\.claude-stoplight\usage-renewal\`, and by that folder the widget keeps it out of the sessions list.
+- The widget never handles the sign-in's refresh token or writes Claude Code's credentials. It only looks at what Claude Code leaves behind.
+- It happens at most once in a quarter of an hour, and after a run that left the sign-in expired (signed out, offline, no `claude` on this computer) not again for half an hour, doubling up to six hours. Each run is noted in `liveness.log`.
+- **Settings → Plan usage → Keep Claude Code's sign-in renewed** turns it off.
+
+With no figure at all (Claude Code is not installed, or was never signed in on this computer), the usage tile reads *Usage appears when Claude replies in a terminal*: one reply there brings the figures and a sign-in the widget can keep renewed.
 
 ## Tray menu & settings
 
@@ -63,7 +81,7 @@ Settings lets you change:
 - **Dim when idle** — fades the lamp when it is green or unlit.
 - **Click through when idle** — when green/unlit, clicks pass straight through the widget to whatever is beneath it (hovering still opens the tray; use the tray icon to interact until Claude is working/waiting again).
 - **Notifications** — on or off, how long a session waits on you before one appears (default 30 s), and whether it plays the Windows notification sound (off by default).
-- **Plan usage** — whether to read usage from Claude Code's status line (on by default; see above).
+- **Plan usage** — whether to read usage from Claude Code's status line, and whether to have Claude Code renew its sign-in when it lapses (both on by default; see above).
 - **Forget silent sessions after** — fallback for a silent session whose process could not be identified: how long it lingers before it's forgotten (default 6 h). Normally a session disappears within about 20 s of its Claude Code process exiting.
 - **Listen port** — changing it restarts the listener and re-installs the hooks and the status line command automatically.
 

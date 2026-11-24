@@ -1,7 +1,7 @@
 {
   "name": "claude-stoplight",
   "productName": "Clawd",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "A lamp in the corner of your screen that shows what Claude Code is doing: green = idle, yellow = working, red = waiting on you.",
   "main": "main.js",
   "author": "Alex Yang",

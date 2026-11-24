@@ -20,6 +20,7 @@ window.stoplight.getSettings().then((s) => {
   $('size').value = s.sizePct;
   $('statusLine').checked = s.statusLine;
   $('statusLineNote').textContent = STATUS_LINE_NOTE[s.statusLine ? s.statusLineState : 'off'] || STATUS_LINE_NOTE.off;
+  $('usageRenew').checked = s.usageRenew;
   $('sizeVal').textContent = `${s.sizePct}%`;
   $('dim').checked = s.dimIdle;
   $('ghost').checked = s.clickThroughIdle;
@@ -47,6 +48,7 @@ function save() {
     notifyAfterSec: Number($('notifyAfter').value),
     notifySound: $('notifySound').checked,
     statusLine: $('statusLine').checked,
+    usageRenew: $('usageRenew').checked,
     pruneHours: Number($('prune').value),
     port: Number($('port').value),
   });

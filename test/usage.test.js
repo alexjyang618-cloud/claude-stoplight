@@ -269,3 +269,133 @@ test('the books survive a restart, and a restart is no way round a wait', () => 
   // figures from before any window they could describe are not restored
   assert.deepEqual(usage.restore({ readings: { session: { percent: 5, asOf: T0 - usage.KEEP_MS - MIN } } }, T0).readings, {});
 });
+
+test('an expired sign-in is worth renewing exactly when a request would have gone out', () => {
+  const ctx = (now, reason, extra) => Object.assign({ now, reason, token: 't', expired: true, active: true }, extra);
+  // nothing known: a look at the tray, a turn ending, or starting up all want figures
+  for (const reason of ['startup', 'hover', 'stop', 'timer']) {
+    assert.deepEqual(usage.decide(usage.createState(), ctx(T0, reason)), { fetch: false, why: 'token expired', renew: true });
+  }
+  // the timer alone never does, with nothing running
+  assert.deepEqual(usage.decide(usage.createState(), ctx(T0, 'timer', { active: false })), { fetch: false, why: 'token expired' });
+  // figures that are fresh enough are no reason to
+  assert.deepEqual(usage.decide(fresh(T0), ctx(T0 + MIN, 'hover')), { fetch: false, why: 'token expired' });
+  // nor is there any point while the endpoint has asked to be left alone
+  const refused = usage.createState();
+  usage.decide(refused, { now: T0, reason: 'startup', token: 't', expired: false });
+  usage.onAttempt(refused, T0);
+  usage.onFailure(refused, T0, { status: 429 });
+  assert.equal(usage.decide(refused, ctx(T0 + 6 * MIN, 'hover')).renew, undefined);
+  assert.equal(usage.decide(refused, ctx(refused.retryAt, 'hover')).renew, true);
+  // and with no sign-in at all there is nothing to renew
+  assert.deepEqual(usage.decide(usage.createState(), { now: T0, reason: 'hover', token: null, expired: false }), { fetch: false, why: 'not signed in' });
+});
+
+test('Claude Code is run to renew its sign-in rarely, and less often while that does not help', () => {
+  const s = usage.createState();
+  const ask = (now) => usage.decide(s, { now, reason: 'hover', token: 't', expired: true, active: true }).renew === true;
+  assert.equal(ask(T0), true);
+  usage.onRenewStart(s, T0);
+  assert.equal(ask(T0 + MIN), false); // one is under way, or just was
+  // it left the token expired: half an hour, doubling, six hours at most
+  const waits = [];
+  let now = T0 + 2000;
+  for (let i = 0; i < 6; i += 1) {
+    waits.push(usage.onRenewResult(s, now, false) / MIN);
+    assert.equal(ask(s.renewAt - 1), false);
+    assert.equal(ask(s.renewAt), true);
+    now = s.renewAt;
+  }
+  assert.deepEqual(waits, [30, 60, 120, 240, 360, 360]);
+  // one that works starts the count again
+  assert.equal(usage.onRenewResult(s, now, true), usage.RENEW_SPACING_MS);
+  assert.equal(s.renewFails, 0);
+  assert.equal(usage.onRenewResult(s, now + usage.RENEW_SPACING_MS, false), usage.RENEW_BACKOFF_MS);
+
+  // a restart is no way round the wait, and neither is a token that has
+  // changed and is still expired: a renewal is what changes it
+  const back = usage.restore(JSON.parse(JSON.stringify(usage.serialize(s))), now + usage.RENEW_SPACING_MS + MIN);
+  assert.equal(back.renewAt, s.renewAt);
+  assert.equal(back.renewFails, 1);
+  usage.decide(back, { now: now + 20 * MIN, reason: 'hover', token: 't', expired: true });
+  assert.equal(usage.decide(back, { now: now + 20 * MIN, reason: 'hover', token: 't', expired: true }).renew, undefined);
+  assert.equal(usage.decide(back, { now: now + 20 * MIN, reason: 'hover', token: 'another', expired: true }).renew, undefined);
+  assert.equal(usage.decide(back, { now: back.renewAt, reason: 'hover', token: 'another', expired: true }).renew, true);
+  // a wait on disk is never longer than one we could have set
+  assert.equal(usage.restore({ renewAt: T0 + 99 * 60 * MIN }, T0).renewAt, T0 + usage.RENEW_BACKOFF_MAX_MS);
+});
+
+test('the figures Claude Code saved are read from its config file, dated to when it was given them', () => {
+  const at = T0 - 3 * MIN;
+  const config = {
+    oauthAccount: { accountUuid: 'acct-1' },
+    cachedUsageUtilization: {
+      fetchedAtMs: at,
+      accountUuid: 'acct-1',
+      utilization: {
+        five_hour: { utilization: 12, resets_at: '2026-11-24T11:10:00Z' },
+        seven_day: { utilization: 34, resets_at: '2026-11-26T13:00:00Z' },
+        limits: [
+          { kind: 'session', group: 'session', percent: 12, resets_at: '2026-11-24T11:10:00Z' },
+          { kind: 'weekly_all', group: 'weekly', percent: 34, resets_at: '2026-11-26T13:00:00Z' },
+          { kind: 'weekly_scoped', group: 'weekly', percent: 5, resets_at: '2026-11-27T11:00:00Z', scope: { model: { display_name: 'Fable' } } },
+        ],
+      },
+    },
+  };
+  const saved = usage.fromCache(config, T0);
+  assert.equal(saved.at, at);
+  assert.deepEqual(
+    saved.readings.map((r) => [r.key, r.label, r.percent, r.asOf, r.source]),
+    [
+      ['session', '5h', 12, at, 'api'],
+      ['weekly', 'Week', 34, at, 'api'],
+      ['model', 'Fable', 5, at, 'api'],
+    ]
+  );
+
+  // nothing there, nothing usable, or not this account's
+  assert.equal(usage.fromCache(null, T0), null);
+  assert.equal(usage.fromCache({}, T0), null);
+  assert.equal(usage.fromCache({ cachedUsageUtilization: { fetchedAtMs: at, utilization: {} } }, T0), null);
+  assert.equal(usage.fromCache({ cachedUsageUtilization: { fetchedAtMs: 'soon', utilization: config.cachedUsageUtilization.utilization } }, T0), null);
+  assert.equal(usage.fromCache(Object.assign({}, config, { oauthAccount: { accountUuid: 'acct-2' } }), T0), null);
+  // too old to describe any window, or from a clock ahead of ours
+  assert.equal(usage.fromCache(config, at + usage.KEEP_MS + MIN), null);
+  assert.equal(usage.fromCache(config, at - 5 * MIN), null);
+  // an account is not always on record on either side: then it is taken
+  const bare = { cachedUsageUtilization: { fetchedAtMs: at, utilization: { five_hour: { utilization: 9 } } } };
+  assert.equal(usage.fromCache(bare, T0).readings[0].percent, 9);
+});
+
+test('saved figures fill in what is older, and stand for an answer from the endpoint', () => {
+  const at = T0 + 10 * MIN;
+  const saved = usage.fromCache(
+    { cachedUsageUtilization: { fetchedAtMs: at, utilization: { limits: [
+      { kind: 'session', percent: 50 },
+      { kind: 'weekly_all', percent: 60 },
+      { kind: 'weekly_scoped', percent: 70, scope: { model: { display_name: 'Fable' } } },
+    ] } } },
+    at + MIN
+  );
+  // with nothing held, all three show, and the endpoint is not asked for them again
+  const empty = usage.createState();
+  assert.equal(usage.applyCached(empty, saved), true);
+  assert.deepEqual(usage.snapshot(empty, at + MIN).bars.map((b) => [b.key, b.percent, b.asOf]), [['session', 50, at], ['weekly', 60, at], ['model', 70, at]]);
+  assert.equal(empty.lastOkAt, at);
+  assert.equal(usage.decide(empty, { now: at + MIN, reason: 'hover', token: 't', expired: false }).fetch, false);
+  assert.equal(usage.decide(empty, { now: at + MIN, reason: 'hover', token: 't', expired: true }).renew, undefined);
+  // the same again changes nothing
+  assert.equal(usage.applyCached(empty, saved), false);
+
+  // a status line that has spoken since keeps its figures; the endpoint-only one is still taken
+  const s = fresh(at + 30 * 1000);
+  s.lastOkAt = T0;
+  assert.equal(usage.applyCached(s, saved), true);
+  assert.deepEqual(usage.snapshot(s, at + MIN).bars.map((b) => [b.key, b.percent]), [['session', 10], ['weekly', 20], ['model', 70]]);
+  // older than everything held: left alone
+  const newer = fresh(at + MIN);
+  usage.onSuccess(newer, at + MIN, usage.fromApi({ limits: [{ kind: 'weekly_scoped', percent: 71, scope: { model: { display_name: 'Fable' } } }] }, at + MIN));
+  assert.equal(usage.applyCached(newer, saved), false);
+  assert.equal(usage.applyCached(newer, null), false);
+});
