@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.4.3 (2026-11-25)
 
 **A lone session's name is smaller.** With one session in the card, its name was set at 14 px, the largest text on the tray after the status pill's time. It is now 12.5 px, half a pixel above a row's among others, and the line under it is 11 px.
 
