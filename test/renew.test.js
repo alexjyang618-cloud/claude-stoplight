@@ -110,6 +110,16 @@ test('the run happens in its own folder, is waited for, and says how it ended', 
     const missing = await renew.run({ file: path.join(dir, 'no-such-program'), args: [], verbatim: false }, { cwd, env: process.env });
     assert.match(missing, /^it could not be started: /);
   } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
+    // the run that was stopped can still be holding its folder for a moment
+    // (Windows refuses to remove a live process's working directory)
+    for (let tries = 0; ; tries += 1) {
+      try {
+        fs.rmSync(dir, { recursive: true, force: true });
+        break;
+      } catch (err) {
+        if (tries >= 40) throw err;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+    }
   }
 });
