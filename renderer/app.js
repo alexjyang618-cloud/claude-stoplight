@@ -386,8 +386,8 @@ function renderRows(now) {
   const extra = list.length - shown.length;
   const hero = list.length === 1;
   const tight = extra > 0;
-  const l1 = hero ? 19 : tight ? 16 : 17;
-  const l2 = hero ? 16 : tight ? 13 : 14;
+  const l1 = tight ? 16 : 17;
+  const l2 = hero ? 15 : tight ? 13 : 14;
   const gap = tight ? 2 : 4;
   const rowH = l1 + l2;
   const moreH = 13;
