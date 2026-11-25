@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.4.2 (2026-11-24)
 
 Three changes to how the opened tray looks and moves.
 
