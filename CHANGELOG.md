@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.2 (2026-11-24)
+
+Three changes to how the opened tray looks and moves.
+
+- **The sessions card is black.** It was the one white tile on the tray. It now takes the same black as the usage tile and the status pill, with session names in white and the times and second lines in grey.
+- **The tray opens out of the lamp.** It used to fade in while it grew from 30% of its size, so it was nearly full size before it could be seen. Now the lamp's circle widens from the corner and uncovers the tray as it goes, and the tray closes back into the lamp the same way, faster.
+- **Tiles swell under the pointer.** The usage tile, the sessions card, each session row, the status pill and the lamp grow by a pixel or two at each edge while the pointer is on them, and settle back when it leaves. Clawd stays the size he is; the lamp's bezel and ring grow round him. With Windows' animation effects switched off, the tray only fades and nothing swells.
+
 ## 1.4.1 (2026-11-24)
 
 **Plan usage now fills in when you work only in the Claude app.** Sessions there send no usage figures (only Claude Code in a terminal runs the status line they come from), and the usage service needs Claude Code's sign-in, which only a terminal session renewed. With neither, the tile stayed on "Usage appears with Claude's next reply" however often Claude replied.

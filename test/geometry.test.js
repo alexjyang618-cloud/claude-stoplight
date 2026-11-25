@@ -72,6 +72,56 @@ test('hit-testing the opened tray: a quarter-disc with the lamp\'s corner square
   assert.ok(G.insideTray(G.trayRadius + 2, 5, 3));
 });
 
+test('which tile a point of the opened tray is on', () => {
+  const foot = G.LAMP_R + G.GAP; // the lamp's centre to the tiles beside and above it
+  assert.equal(G.tileAt(0, 0), 'lamp');
+  assert.equal(G.tileAt(15, 15), 'lamp');
+  assert.equal(G.tileAt(foot + 1, 0), 'pill');
+  assert.equal(G.tileAt(G.D - G.pill.left - 1, G.LAMP_R - 1), 'pill');
+  assert.equal(G.tileAt(0, foot + 1), 'card');
+  assert.equal(G.tileAt(100, 80), 'card');
+  assert.equal(G.tileAt(-G.LAMP_R + 1, G.D - G.card.top - 1), 'card'); // its corner over the lamp
+  assert.equal(G.tileAt(50, 200), 'usage'); // the legend
+  assert.equal(G.tileAt(-G.LAMP_R + 1, 200), 'usage');
+  assert.equal(G.tileAt(150, 150), 'usage'); // the band the gauges run in
+  assert.equal(G.tileAt(230, -10), 'usage'); // and its foot, past the pill
+  // the gaps between tiles belong to none of them
+  assert.equal(G.tileAt(G.LAMP_R + G.GAP / 2, 0), null); // lamp | pill
+  assert.equal(G.tileAt(0, G.LAMP_R + G.GAP / 2), null); // lamp | card
+  assert.equal(G.tileAt(G.D - G.pill.left + G.GAP / 2, 0), null); // pill | usage
+  assert.equal(G.tileAt(50, G.D - G.card.top + G.GAP / 2), null); // card | legend
+  assert.equal(G.tileAt(132, 132), null); // card | band, along the diagonal
+  // and so does the tray's own margin, and everything off it
+  assert.equal(G.tileAt(G.trayRadius - 1, 0), null);
+  assert.equal(G.tileAt(-G.LAMP_R - 2, 100), null);
+  assert.equal(G.tileAt(240, 240), null);
+  // every tile is on the tray
+  for (let u = -30; u <= 270; u += 7) {
+    for (let v = -30; v <= 270; v += 7) {
+      if (G.tileAt(u, v)) assert.ok(G.insideTray(u, v, 0), `${u},${v} is a tile but not the tray`);
+    }
+  }
+});
+
+test('a tile swells about the middle of its own box', () => {
+  // the middle of the box round a path's points; every command here ends in
+  // one (M x y, L x y, A rx ry rotation large sweep x y)
+  const box = (d) => {
+    const points = d
+      .split(/(?=[MLA])/)
+      .map(numbers)
+      .map((p) => p.slice(-2));
+    const mid = (i) => (Math.min(...points.map((p) => p[i])) + Math.max(...points.map((p) => p[i]))) / 2;
+    return { x: mid(0), y: mid(1) };
+  };
+  // the paths' end points reach every edge of each tile but the card's curved one
+  assert.deepEqual(G.middle.usage, box(G.usagePath));
+  assert.equal(G.middle.card.y, box(G.cardPath).y);
+  assert.equal(G.middle.card.x, (G.pill.left + G.D + G.LAMP_R) / 2);
+  // a swell of 2% moves no edge further than the gap to the next tile
+  assert.ok(0.02 * (G.SIZE / 2) < G.GAP);
+});
+
 test('hit-testing at rest: the lamp, and the wait pill when there is one', () => {
   assert.ok(G.insideRest(0, 0, 0, 3));
   assert.ok(G.insideRest(G.DOT_R, -G.DOT_R, 0, 3));

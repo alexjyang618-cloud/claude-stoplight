@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld('stoplight', {
   onHover: (cb) => ipcRenderer.on('hover', (_event, data) => cb(data)),
   onReact: (cb) => ipcRenderer.on('react', (_event, data) => cb(data)),
   onUsage: (cb) => ipcRenderer.on('usage', (_event, data) => cb(data)),
+  // the tile of the opened tray the pointer is on: usage | card | pill | lamp | null
+  onHot: (cb) => ipcRenderer.on('hot', (_event, data) => cb(data)),
   // which part of the window is the widget right now: { open, reach }
   live: (region) => ipcRenderer.send('widget:live', region),
   focusSession: (id) => ipcRenderer.send('widget:focus-session', id),

@@ -35,18 +35,14 @@
 
   /* The widget floats on a transparent window, and nothing drawn in it can
      blur the desktop behind, so nothing here is translucent: a flat tray
-     carrying tiles of ink and paper, the way a shelf of desk instruments
-     reads over any wallpaper. The one colour is the lamp's. */
+     carrying tiles of ink, the way a shelf of desk instruments reads over
+     any wallpaper. The one colour is the lamp's. */
   --tray: #c9c9cc;
   --ink: #0e0e0f;
-  --paper: #ffffff;
   /* text on ink: primary, secondary, tertiary */
   --on-ink: #ffffff;
   --on-ink-2: #a1a1a6;
   --on-ink-3: #8e8e93;
-  /* text on paper */
-  --on-paper: #0e0e0f;
-  --on-paper-2: #5e5e63;
   /* the states */
   --red: #ff453a;
   --amber: #ffb30f;
@@ -103,22 +99,26 @@ body {
 
 /* ------------------------------------------------------------------ the tray */
 
-/* Shut, it is folded into the lamp. It opens out of it with a little spring,
-   the way a signal spreads from its source, and folds back faster than it
-   came. (The window itself never resizes.) */
+/* Shut, it is folded into the lamp. It opens out of the lamp's own circle:
+   the circle widens from the corner and uncovers the tray as it goes, the way
+   a signal spreads from its source, and draws back into the lamp faster than
+   it came. The tray's rim is an arc about the lamp, so the widening edge is
+   the tray's own outline, growing. app.js sets --ox and --oy to the lamp's
+   centre; 18px is the lamp at rest and 264px just clears the rim. (The
+   window itself never resizes.) */
 #tray {
   inset: 0;
   opacity: 0;
-  transform: scale(0.3);
+  clip-path: circle(18px at var(--ox) var(--oy));
   pointer-events: none;
-  transition: opacity 0.12s ease, transform 0.16s ease-in;
+  transition: clip-path 0.2s ease-in, opacity 0s linear 0.2s;
 }
 .open #tray {
   opacity: 1;
-  transform: none;
+  clip-path: circle(264px at var(--ox) var(--oy));
   pointer-events: auto;
   -webkit-app-region: drag; /* move the widget by any tile */
-  transition: opacity 0.14s ease, transform 0.36s var(--spring);
+  transition: clip-path 0.42s cubic-bezier(0.3, 0.75, 0.25, 1), opacity 0s;
 }
 
 #plate {
@@ -133,11 +133,21 @@ body {
   height: 100%;
   overflow: visible;
 }
-#tile-usage {
+#tile-usage,
+#tile-card {
   fill: var(--ink);
 }
-#tile-card {
-  fill: var(--paper);
+
+/* what is written on a tile lies over it in a layer the tray's size, so the
+   two can swell as one (see "under the pointer") */
+#usage-face,
+#card-face {
+  inset: 0;
+  pointer-events: none;
+}
+#usage-face > *,
+#card-face > * {
+  position: absolute;
 }
 
 /* --- usage: three gauges up the rim, each ending level with its legend row --- */
@@ -227,6 +237,7 @@ body {
   color: var(--on-ink-3);
   font-size: 11px;
   line-height: 15px;
+  pointer-events: auto;
 }
 .fx #uhint {
   text-align: right;
@@ -241,13 +252,13 @@ body {
   gap: 6px;
   padding: 2px 6px;
   border-radius: 9px;
-  color: var(--on-paper);
+  color: var(--on-ink);
   white-space: nowrap;
   outline: none;
   cursor: pointer;
   pointer-events: auto;
   -webkit-app-region: no-drag;
-  transition: background-color 0.14s ease;
+  transition: background-color 0.14s ease, transform 0.2s ease-out;
 }
 .row * {
   cursor: pointer;
@@ -257,10 +268,10 @@ body {
 }
 .row:hover,
 .row:focus-visible {
-  background: rgba(0, 0, 0, 0.07);
+  background: rgba(255, 255, 255, 0.1);
 }
 .row:active {
-  background: rgba(0, 0, 0, 0.13);
+  background: rgba(255, 255, 255, 0.17);
 }
 
 .rtext {
@@ -283,7 +294,7 @@ body {
 }
 .dur {
   flex: none;
-  color: var(--on-paper-2);
+  color: var(--on-ink-2);
   font-weight: 400;
   font-variant-numeric: tabular-nums;
 }
@@ -296,7 +307,7 @@ body {
 .l2 {
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--on-paper-2);
+  color: var(--on-ink-2);
   font-size: 10.5px;
   line-height: 14px;
 }
@@ -308,7 +319,6 @@ body {
   height: 8px;
   margin-top: 4.5px;
   border-radius: 50%;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.28);
 }
 .bead.ready {
   background: var(--green);
@@ -352,7 +362,7 @@ body {
 
 #more,
 #empty {
-  color: var(--on-paper-2);
+  color: var(--on-ink-2);
   white-space: nowrap;
 }
 #more {
@@ -379,7 +389,7 @@ body {
   background: var(--ink);
   color: var(--on-ink);
   white-space: nowrap;
-  transition: background-color 0.25s ease, color 0.25s ease;
+  transition: background-color 0.25s ease, color 0.25s ease, transform 0.2s ease-out;
 }
 /* the time stays beside the lamp */
 .fx #pill {
@@ -579,13 +589,65 @@ body {
   to { transform: rotate(360deg); }
 }
 
-/* Reduce Motion: the tray only fades, the gauges are simply there, and the
-   lamp's states hold still (the working arc stays, as a shape) */
+/* ------------------------------------------------------- under the pointer */
+
+/* Whatever the pointer is on swells a little, and settles back when the
+   pointer moves off. Most of the tray is a drag region, which never sees the
+   mouse, so main says which tile that is (data-hot on #space); a session row
+   hears it from the pointer itself. Each swell moves an edge by about two
+   pixels, less than the gap between tiles, so nothing ever touches. A tile
+   and its face swell about the same point (app.js sets it), as one piece. */
+#usage-tile,
+#usage-face,
+#tile-card,
+#card-face {
+  transition: transform 0.2s ease-out;
+}
+.open[data-hot='usage'] #usage-tile,
+.open[data-hot='usage'] #usage-face {
+  transform: scale(1.016);
+  transition: transform 0.3s var(--spring);
+}
+.open[data-hot='card'] #tile-card,
+.open[data-hot='card'] #card-face {
+  transform: scale(1.02);
+  transition: transform 0.3s var(--spring);
+}
+.open[data-hot='pill'] #pill {
+  transform: scale(1.03);
+  transition: background-color 0.25s ease, color 0.25s ease, transform 0.3s var(--spring);
+}
+.row:hover,
+.row:focus-visible {
+  transform: scale(1.03);
+  transition: background-color 0.14s ease, transform 0.3s var(--spring);
+}
+/* the lamp's bezel and ring swell round Clawd; he stays on his pixel grid */
+.open[data-hot='lamp'] .bezel,
+.open[data-hot='lamp'] .glow {
+  transform: scale(1.07);
+}
+
+/* Reduce Motion: the tray only fades, the gauges are simply there, nothing
+   swells, and the lamp's states hold still (the working arc stays, as a
+   shape) */
 @media (prefers-reduced-motion: reduce) {
   #tray,
   .open #tray {
-    transform: none;
+    clip-path: none;
     transition: opacity 0.2s ease;
+  }
+  #usage-tile,
+  #usage-face,
+  #tile-card,
+  #card-face,
+  #pill,
+  .row {
+    transform: none !important;
+  }
+  .open[data-hot='lamp'] .bezel,
+  .open[data-hot='lamp'] .glow {
+    transform: none;
   }
   .gfill,
   #space:not(.open) .gfill {
@@ -825,7 +887,7 @@ body {
   left: 0;
   bottom: 0;
   font: 700 10px/1 var(--ui-font);
-  color: var(--on-paper);
+  color: var(--on-ink);
   opacity: 0;
   animation: zz 3s ease-out infinite;
 }

@@ -1925,6 +1925,12 @@ let hoverSince = 0;
 // tray, or the lamp and however far the wait pill reaches beside it
 let live = { open: false, reach: 0 };
 let hoverPaused = false; // a scripted run drives the page's hover itself
+// The tile of the opened tray the cursor is on, as the page was last told.
+// Most of the tray is a drag region, which never sees the mouse, so the page
+// learns it from here and swells that tile a little.
+let hot = null;
+const HOVER_IDLE_MS = 120; // watching for the cursor to arrive
+const HOVER_LIVE_MS = 40; // following it across the tiles
 
 // The tray has been open long enough to read: every finished turn it showed
 // for at least SEEN_MS counts as seen.
@@ -1960,6 +1966,22 @@ function pollHover() {
     win.webContents.send('hover', hovered);
     // the tray is about to show the usage figures: worth a look at their age
     if (hovered) refreshUsage('hover');
+  }
+  setHot(hovered && live.open ? G.tileAt(u, v) : null);
+}
+
+function setHot(tile) {
+  if (tile === hot || !win || win.isDestroyed()) return;
+  hot = tile;
+  win.webContents.send('hot', hot);
+}
+
+// the cursor is looked for at a walk, and followed closely once it is here
+function watchHover() {
+  try {
+    pollHover();
+  } finally {
+    setTimeout(watchHover, hovered ? HOVER_LIVE_MS : HOVER_IDLE_MS);
   }
 }
 
@@ -2167,7 +2189,10 @@ function runSmoke() {
       hoverPaused = true;
       hovered = Boolean(on);
       win.webContents.send('hover', hovered);
+      if (!hovered) setHot(null); // as the cursor leaving would
     },
+    // and the tile the pointer is on
+    setHot,
     // as if the window had been dragged there and let go
     moveTo(pos) {
       suppressMoveSave = true;
@@ -2221,7 +2246,7 @@ if (!app.requestSingleInstanceLock()) {
     watchSessionsDir();
     setInterval(() => refreshUsage('timer'), USAGE_TIMER_MS);
     refreshUsage('startup');
-    setInterval(pollHover, 120);
+    setTimeout(watchHover, HOVER_IDLE_MS);
     // a docked widget follows its screen edge when the work area changes
     // (taskbar hidden/shown/resized, display added/removed, DPI change)
     screen.on('display-metrics-changed', replaceWindow);
