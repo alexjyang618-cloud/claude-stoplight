@@ -333,21 +333,19 @@ body {
   background: var(--blue);
 }
 
-/* a lone session has the card to itself (its time is the pill's) */
+/* a lone session has the card to itself (its time is the pill's): its name
+   is bolder and half a pixel larger than a row's among others, and its second
+   line is larger by the same proportion */
 .row.hero .dur {
   display: none;
 }
 .row.hero .l1 {
-  font-size: 14px;
-  line-height: 19px;
+  font-size: 12.5px;
   font-weight: 600;
 }
 .row.hero .l2 {
-  font-size: 11.5px;
-  line-height: 16px;
-}
-.row.hero .bead {
-  margin-top: 5.5px;
+  font-size: 11px;
+  line-height: 15px;
 }
 /* more sessions than rows: the rows close up to leave a line for the count */
 .row.tight .l1 {
