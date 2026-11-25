@@ -27,6 +27,10 @@ const space = document.getElementById('space');
 const tray = document.getElementById('tray');
 const plate = document.getElementById('plate');
 const tilesG = document.getElementById('tiles-g');
+const usageTile = document.getElementById('usage-tile');
+const usageFace = document.getElementById('usage-face');
+const cardTile = document.getElementById('tile-card');
+const cardFace = document.getElementById('card-face');
 const gaugesEl = document.getElementById('gauges');
 const legendEl = document.getElementById('legend');
 const uhintEl = document.getElementById('uhint');
@@ -266,7 +270,17 @@ function layout() {
     'transform',
     `translate(${fx ? G.SIZE : 0} ${fy ? G.SIZE : 0}) scale(${fx ? -1 : 1} ${fy ? -1 : 1})`
   );
-  tray.style.transformOrigin = `${mx(G.D, 0)}px ${my(G.D, 0)}px`;
+  // the tray opens out of the lamp's circle
+  tray.style.setProperty('--ox', `${mx(G.D, 0)}px`);
+  tray.style.setProperty('--oy', `${my(G.D, 0)}px`);
+  // A tile swells under the pointer about its own middle, and what is written
+  // on it about the same point: the shapes in geometry.js's coordinates (they
+  // are flipped as a group), the text in the mirrored ones.
+  const { usage: um, card: cm } = G.middle;
+  usageTile.style.transformOrigin = `${um.x}px ${um.y}px`;
+  cardTile.style.transformOrigin = `${cm.x}px ${cm.y}px`;
+  usageFace.style.transformOrigin = `${mx(um.x, 0)}px ${my(um.y, 0)}px`;
+  cardFace.style.transformOrigin = `${mx(cm.x, 0)}px ${my(cm.y, 0)}px`;
   for (const p of gaugeParts) {
     box(p.row, G.legend.left, p.rowY - G.legend.rowH / 2, G.legend.right - G.legend.left, G.legend.rowH);
   }
@@ -613,7 +627,25 @@ function setExpanded(next) {
   expanded = next;
   tray.inert = !expanded; // shut, its rows are out of reach of the keyboard too
   render();
+  showHot();
 }
+
+// ---------------------------------------------------------- under the pointer
+
+// Which tile the pointer is on ('usage', 'card', 'pill', 'lamp', or none),
+// from main: most of the tray is a drag region, which never sees the mouse.
+// style.css swells that tile a little.
+let hot = null;
+
+function showHot() {
+  const next = expanded && hot ? hot : '';
+  if ((space.dataset.hot || '') !== next) space.dataset.hot = next;
+}
+
+window.stoplight.onHot((tile) => {
+  hot = tile || null;
+  showHot();
+});
 
 // ---------------------------------------------------------------- reactions
 

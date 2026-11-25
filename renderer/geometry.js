@@ -122,6 +122,27 @@
     return u <= 0 || v <= 0 || u * u + v * v <= far * far;
   }
 
+  // Which tile of the opened tray is a point on: 'lamp', 'pill', 'card' or
+  // 'usage', or null in the gaps between them. u and v as for insideTray. The
+  // tiles' rounded corners are taken as square: a pixel or two at a corner
+  // makes no difference to what the pointer is over.
+  function tileAt(u, v) {
+    const d2 = u * u + v * v;
+    if (d2 <= LAMP_R * LAMP_R) return 'lamp';
+    if (u < -LAMP_R || v < -LAMP_R) return null;
+    if (v <= LAMP_R) {
+      if (u >= foot && u <= Rs) return 'pill';
+    } else if (v >= cardBottom && v <= cardTop) {
+      if (d2 <= Rs * Rs) return 'card';
+    }
+    // the usage tile: the band between its two arcs, the foot that carries
+    // the band down past the pill, and the legend block above the card
+    if (u > Ro || v > Ro || (u > 0 && v > 0 && d2 > Ro * Ro)) return null;
+    if (v >= legendBottom) return 'usage';
+    if (u < 0) return null;
+    return (v <= 0 ? u >= Ri : d2 >= Ri * Ri) ? 'usage' : null;
+  }
+
   // Is it on the resting lamp, or on the wait pill beside it (reach: how far
   // the pill extends from the lamp's centre, 0 without one)?
   function insideRest(u, v, reach, pad) {
@@ -144,9 +165,15 @@
     gauges,
     legend: { left: D - ARC_END + LEGEND_GAP, right: textEdge, rowH: 16 },
     card: { top: D - cardTop, bottom: D - cardBottom, height: CARD_H, textEdge },
+    // the middle of each tile's own box: what it swells about under the pointer
+    middle: {
+      usage: { x: (GAP + D + LAMP_R) / 2, y: (GAP + D + LAMP_R) / 2 },
+      card: { x: (D - Rs + D + LAMP_R) / 2, y: (D - cardTop + D - cardBottom) / 2 },
+    },
     pill: { left: D - Rs, top: D - LAMP_R, width: Rs - foot, height: 2 * LAMP_R },
     cardLimit,
     insideTray,
     insideRest,
+    tileAt,
   };
 });

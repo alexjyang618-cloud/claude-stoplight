@@ -19,19 +19,26 @@
         <div id="plate"></div>
         <svg id="tiles" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
           <g id="tiles-g">
-            <path id="tile-usage"></path>
+            <g id="usage-tile">
+              <path id="tile-usage"></path>
+              <g id="gauges"></g>
+            </g>
             <path id="tile-card"></path>
-            <g id="gauges"></g>
           </g>
         </svg>
+        <!-- what is written on each tile, so it moves as one with its tile -->
+        <div id="usage-face">
         <div id="legend"></div>
         <!-- only a terminal session reports usage (see lib/usage.js): a reply in
              the Claude app brings none, so the hint must not promise one. It
              shows when Claude Code's sign-in could not be used or renewed either. -->
         <div id="uhint" hidden title="Sessions in the Claude app don't report plan usage, and Clawd has not been able to ask for it with Claude Code's sign-in. One reply in a terminal session brings the figures.">Usage appears when Claude replies in a terminal</div>
+        </div>
+        <div id="card-face">
         <div id="rows"></div>
         <div id="more" hidden></div>
         <div id="empty" hidden>Waiting for Claude Code</div>
+        </div>
         <div id="pill">
           <span id="pill-label"></span>
           <span id="pill-time"></span>
